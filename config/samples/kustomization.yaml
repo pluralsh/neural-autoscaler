@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- workload-deployment.yaml
+- autoscaling_v1alpha1_neuralautoscaler.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

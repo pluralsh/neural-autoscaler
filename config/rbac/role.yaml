@@ -1,0 +1,55 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  - metrics.k8s.io
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - replicasets
+  - statefulsets
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - autoscaling.plural.sh
+  resources:
+  - neuralautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - autoscaling.plural.sh
+  resources:
+  - neuralautoscalers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - autoscaling.plural.sh
+  resources:
+  - neuralautoscalers/status
+  verbs:
+  - get
+  - patch
+  - update

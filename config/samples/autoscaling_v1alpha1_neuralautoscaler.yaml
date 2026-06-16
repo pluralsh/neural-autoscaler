@@ -1,0 +1,21 @@
+apiVersion: autoscaling.plural.sh/v1alpha1
+kind: NeuralAutoscaler
+metadata:
+  labels:
+    app.kubernetes.io/name: neuralautoscaler
+    app.kubernetes.io/instance: neuralautoscaler-sample
+    app.kubernetes.io/part-of: neural-autoscaler
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: neural-autoscaler
+  name: neuralautoscaler-sample
+spec:
+  metrics:
+    type: MetricsServer
+    metricsServer:
+      targetRef:
+        kind: Deployment
+        name: api
+      metric: cpu
+  forecast:
+    horizon: 12
+    step: 1m

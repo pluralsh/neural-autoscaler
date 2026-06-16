@@ -1,0 +1,38 @@
+# Demo workload for neural-autoscaler e2e testing.
+# Targeted by NeuralAutoscaler sample (spec.metrics.metricsServer.targetRef.name: api).
+# Generates modest CPU activity so metrics-server reports non-zero usage.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app: api
+    app.kubernetes.io/part-of: neural-autoscaler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: registry.k8s.io/e2e-test-images/busybox:1.29-4
+          command:
+            - sh
+            - -c
+            - |
+              while true; do
+                dd if=/dev/zero of=/dev/null bs=64k count=32 2>/dev/null
+                sleep 0.2
+              done
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi

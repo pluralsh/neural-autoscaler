@@ -1,0 +1,24 @@
+# Keep build context small; mount models at runtime (see Dockerfile).
+.git/
+.gitignore
+.venv/
+bin/
+cover.out
+*.out
+
+# Large ONNX weights (~1GB TimesFM, ~457MB Chronos) — mount with:
+#   docker run -v "$(pwd)/models:/models:ro" ...
+models/
+
+# Hugging Face download cache (if models/ is included in a baked build)
+**/.cache/
+
+# Dev artifacts not needed for the manager image
+hack/
+test/
+.github/
+.golangci.yml
+PROJECT
+README.md
+Dockerfile.cross
+config/
