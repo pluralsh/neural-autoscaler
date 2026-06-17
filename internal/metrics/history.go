@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -132,4 +133,15 @@ func (s *HistoryStore) Delete(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.buffers, key)
+}
+
+// DeleteByPrefix removes all buffers whose keys start with prefix.
+func (s *HistoryStore) DeleteByPrefix(prefix string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key := range s.buffers {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.buffers, key)
+		}
+	}
 }

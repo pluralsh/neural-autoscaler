@@ -1,6 +1,12 @@
-# Demo workload for neural-autoscaler e2e testing.
-# Targeted by NeuralAutoscaler sample (spec.metrics.metricsServer.targetRef.name: api).
-# Generates modest CPU activity so metrics-server reports non-zero usage.
+# Demo workload for neural-autoscaler in-place resize testing.
+# Targeted by NeuralAutoscaler sample (targetRef.name: api, resize.targetSelector app: api).
+#
+# Watch resize:
+#   kubectl get pods -l app=api -w
+#   kubectl get pod -l app=api -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].resources.requests}{"\n"}{end}'
+#   kubectl describe pod -l app=api | grep -A5 "Requests:"
+#
+# Requires InPlacePodVerticalScaling (see hack/kind-inplace-config.yaml for kind clusters on Kubernetes < 1.33).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,21 +24,44 @@ spec:
       labels:
         app: api
     spec:
+      volumes:
+        - name: memscratch
+          emptyDir:
+            medium: Memory
+            sizeLimit: 384Mi
       containers:
         - name: api
           image: registry.k8s.io/e2e-test-images/busybox:1.29-4
+          volumeMounts:
+            - name: memscratch
+              mountPath: /mem
           command:
             - sh
             - -c
             - |
+              echo "starting load generator (cpu bursts + ~280Mi resident memory)"
+              # /dev/shm is only ~64Mi in this image; use memory-backed emptyDir instead.
+              if ! dd if=/dev/zero of=/mem/hog bs=1M count=280 2>/dev/null; then
+                echo "warning: could not allocate full memory slab; continuing with cpu load"
+              fi
+              # Bursty CPU: high for 45s, low for 15s — helps ONNX forecast a rising pattern.
               while true; do
-                dd if=/dev/zero of=/dev/null bs=64k count=32 2>/dev/null
-                sleep 0.2
+                end=$(( $(date +%s) + 45 ))
+                while [ "$(date +%s)" -lt "$end" ]; do
+                  dd if=/dev/zero of=/dev/null bs=1M count=20 2>/dev/null || true
+                done
+                sleep 15
               done
           resources:
+            # Start below resize mins so in-place scale-up is visible (forecast + headroom should exceed mins).
             requests:
               cpu: 100m
               memory: 64Mi
             limits:
-              cpu: 500m
-              memory: 128Mi
+              cpu: "2"
+              memory: 2Gi
+          resizePolicy:
+            - resourceName: cpu
+              restartPolicy: NotRequired
+            - resourceName: memory
+              restartPolicy: NotRequired

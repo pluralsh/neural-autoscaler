@@ -68,9 +68,10 @@ type MetricsServerSourceSpec struct {
 	// TargetRef identifies the scaled workload (Deployment, StatefulSet, ReplicaSet, or Pod).
 	TargetRef CrossVersionObjectReference `json:"targetRef"`
 
-	// Metric is the container resource to aggregate across matching pods.
+	// Resources lists container resources to aggregate across matching pods.
 	// +kubebuilder:validation:Required
-	Metric ResourceMetric `json:"metric"`
+	// +kubebuilder:validation:MinItems=1
+	Resources []ResourceMetric `json:"resources"`
 
 	// Namespace overrides the NeuralAutoscaler namespace for target resolution and pod metrics reads.
 	// Defaults to the NeuralAutoscaler object namespace when unset.
@@ -126,6 +127,34 @@ type PrometheusSourceSpec struct {
 	Auth *corev1.SecretKeySelector `json:"auth,omitempty"`
 }
 
+// ResizeSpec configures in-place vertical scaling of pods selected by label.
+// Each entry in resources is driven by the matching metric from metrics.metricsServer.resources.
+type ResizeSpec struct {
+	// TargetSelector identifies pods to resize.
+	// +kubebuilder:validation:Required
+	TargetSelector metav1.LabelSelector `json:"targetSelector"`
+
+	// Namespace overrides the NeuralAutoscaler namespace for pod selection and resize.
+	// Defaults to the NeuralAutoscaler object namespace when unset.
+	Namespace string `json:"namespace,omitempty"`
+
+	// Resources defines per-resource resize bounds. Keys must be cpu and/or memory.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinProperties=1
+	Resources map[string]ResourceBoundsSpec `json:"resources"`
+}
+
+// ResourceBoundsSpec defines optional min/max quantity bounds for a resize target resource.
+type ResourceBoundsSpec struct {
+	// Min is the minimum allowed quantity, for example "250m" or "512Mi".
+	// +optional
+	Min *string `json:"min,omitempty"`
+
+	// Max is the maximum allowed quantity, for example "8" or "16Gi".
+	// +optional
+	Max *string `json:"max,omitempty"`
+}
+
 // ForecastSpec configures optional ONNX forecasting for fetched metrics.
 type ForecastSpec struct {
 	// Horizon is the number of future steps to predict.
@@ -148,6 +177,10 @@ type NeuralAutoscalerSpec struct {
 	// Forecast optionally enables ONNX forecasting when the operator is started with a model.
 	// +optional
 	Forecast *ForecastSpec `json:"forecast,omitempty"`
+
+	// Resize optionally enables in-place pod resource resizing after a forecast is available.
+	// +optional
+	Resize *ResizeSpec `json:"resize,omitempty"`
 }
 
 // ForecastStatus records the most recent forecast summary written by the controller.
@@ -165,11 +198,11 @@ type NeuralAutoscalerStatus struct {
 	// +optional
 	LastFetchTime *metav1.Time `json:"lastFetchTime,omitempty"`
 
-	// LastMetricValue is the most recent fetched metric sample when only one point is available.
+	// LastResourceValues maps resource name to the most recent fetched sample value.
 	// +optional
-	LastMetricValue string `json:"lastMetricValue,omitempty"`
+	LastResourceValues map[string]string `json:"lastResourceValues,omitempty"`
 
-	// LastMetricsCount is the number of samples returned by the last successful fetch.
+	// LastMetricsCount is the number of samples in the longest buffered history series.
 	// +optional
 	LastMetricsCount int32 `json:"lastMetricsCount,omitempty"`
 

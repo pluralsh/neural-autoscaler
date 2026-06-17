@@ -72,18 +72,23 @@ spec:
                     description: MetricsServer fetches current pod resource usage
                       from the Kubernetes metrics API.
                     properties:
-                      metric:
-                        description: Metric is the container resource to aggregate
-                          across matching pods.
-                        enum:
-                        - cpu
-                        - memory
-                        type: string
                       namespace:
                         description: |-
                           Namespace overrides the NeuralAutoscaler namespace for target resolution and pod metrics reads.
                           Defaults to the NeuralAutoscaler object namespace when unset.
                         type: string
+                      resources:
+                        description: Resources lists container resources to aggregate
+                          across matching pods.
+                        items:
+                          description: ResourceMetric is a well-known container resource
+                            metric exposed by metrics-server.
+                          enum:
+                          - cpu
+                          - memory
+                          type: string
+                        minItems: 1
+                        type: array
                       targetRef:
                         description: TargetRef identifies the scaled workload (Deployment,
                           StatefulSet, ReplicaSet, or Pod).
@@ -109,7 +114,7 @@ spec:
                         - name
                         type: object
                     required:
-                    - metric
+                    - resources
                     - targetRef
                     type: object
                   prometheus:
@@ -186,6 +191,83 @@ spec:
                   rule: self.type != 'MetricsServer' || has(self.metricsServer)
                 - message: prometheus is required when type is Prometheus
                   rule: self.type != 'Prometheus' || has(self.prometheus)
+              resize:
+                description: Resize optionally enables in-place pod resource resizing
+                  after a forecast is available.
+                properties:
+                  namespace:
+                    description: |-
+                      Namespace overrides the NeuralAutoscaler namespace for pod selection and resize.
+                      Defaults to the NeuralAutoscaler object namespace when unset.
+                    type: string
+                  resources:
+                    additionalProperties:
+                      description: ResourceBoundsSpec defines optional min/max quantity
+                        bounds for a resize target resource.
+                      properties:
+                        max:
+                          description: Max is the maximum allowed quantity, for example
+                            "8" or "16Gi".
+                          type: string
+                        min:
+                          description: Min is the minimum allowed quantity, for example
+                            "250m" or "512Mi".
+                          type: string
+                      type: object
+                    description: Resources defines per-resource resize bounds. Keys
+                      must be cpu and/or memory.
+                    minProperties: 1
+                    type: object
+                  targetSelector:
+                    description: TargetSelector identifies pods to resize.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - resources
+                - targetSelector
+                type: object
             required:
             - metrics
             type: object
@@ -267,15 +349,17 @@ spec:
                       forecast.
                     type: string
                 type: object
-              lastMetricValue:
-                description: LastMetricValue is the most recent fetched metric sample
-                  when only one point is available.
-                type: string
               lastMetricsCount:
-                description: LastMetricsCount is the number of samples returned by
-                  the last successful fetch.
+                description: LastMetricsCount is the number of samples in the longest
+                  buffered history series.
                 format: int32
                 type: integer
+              lastResourceValues:
+                additionalProperties:
+                  type: string
+                description: LastResourceValues maps resource name to the most recent
+                  fetched sample value.
+                type: object
             type: object
         type: object
     served: true

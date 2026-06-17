@@ -1,0 +1,17 @@
+# kind cluster config enabling in-place pod vertical scaling (required for pods/resize on Kubernetes < 1.33).
+# On Kubernetes 1.33+ (including default kindest/node images), InPlacePodVerticalScaling is enabled by default.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+featureGates:
+  InPlacePodVerticalScaling: true
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            feature-gates: "InPlacePodVerticalScaling=true"
+        controllerManager:
+          extraArgs:
+            feature-gates: "InPlacePodVerticalScaling=true"

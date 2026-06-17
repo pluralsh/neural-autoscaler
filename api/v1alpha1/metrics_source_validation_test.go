@@ -20,13 +20,45 @@ func TestValidateMetricsSource(t *testing.T) {
 				Type: MetricsSourceMetricsServer,
 				MetricsServer: &MetricsServerSourceSpec{
 					TargetRef: CrossVersionObjectReference{Kind: "Deployment", Name: "api"},
-					Metric:    ResourceMetricCPU,
+					Resources: []ResourceMetric{ResourceMetricCPU, ResourceMetricMemory},
+				},
+			},
+		},
+		{
+			name: "metrics server single resource",
+			spec: MetricsSourceSpec{
+				Type: MetricsSourceMetricsServer,
+				MetricsServer: &MetricsServerSourceSpec{
+					TargetRef: CrossVersionObjectReference{Kind: "Deployment", Name: "api"},
+					Resources: []ResourceMetric{ResourceMetricCPU},
 				},
 			},
 		},
 		{
 			name:    "metrics server missing config",
 			spec:    MetricsSourceSpec{Type: MetricsSourceMetricsServer},
+			wantErr: true,
+		},
+		{
+			name: "metrics server empty resources",
+			spec: MetricsSourceSpec{
+				Type: MetricsSourceMetricsServer,
+				MetricsServer: &MetricsServerSourceSpec{
+					TargetRef: CrossVersionObjectReference{Kind: "Deployment", Name: "api"},
+					Resources: []ResourceMetric{},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "metrics server duplicate resources",
+			spec: MetricsSourceSpec{
+				Type: MetricsSourceMetricsServer,
+				MetricsServer: &MetricsServerSourceSpec{
+					TargetRef: CrossVersionObjectReference{Kind: "Deployment", Name: "api"},
+					Resources: []ResourceMetric{ResourceMetricCPU, ResourceMetricCPU},
+				},
+			},
 			wantErr: true,
 		},
 		{

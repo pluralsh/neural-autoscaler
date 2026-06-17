@@ -7,17 +7,23 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - secrets
-  verbs:
-  - get
-- apiGroups:
-  - ""
-  - metrics.k8s.io
-  resources:
   - pods
   verbs:
   - get
   - list
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods/resize
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
 - apiGroups:
   - apps
   resources:
@@ -53,3 +59,10 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - pods
+  verbs:
+  - get
+  - list

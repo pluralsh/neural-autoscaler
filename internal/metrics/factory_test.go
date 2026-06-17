@@ -36,7 +36,7 @@ func TestFactoryNewFetcherMetricsServerRequiresClients(t *testing.T) {
 		Type: autoscalingv1alpha1.MetricsSourceMetricsServer,
 		MetricsServer: &autoscalingv1alpha1.MetricsServerSourceSpec{
 			TargetRef: autoscalingv1alpha1.CrossVersionObjectReference{Kind: "Pod", Name: "api-1"},
-			Metric:    autoscalingv1alpha1.ResourceMetricCPU,
+			Resources: []autoscalingv1alpha1.ResourceMetric{autoscalingv1alpha1.ResourceMetricCPU},
 		},
 	}, "default")
 	if err == nil {

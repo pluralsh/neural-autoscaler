@@ -36,18 +36,18 @@ func newMetricsServerFetcher(factory *Factory, spec autoscalingv1alpha1.MetricsS
 	}
 }
 
-func (f *metricsServerFetcher) Fetch(ctx context.Context) (Series, error) {
+func (f *metricsServerFetcher) Fetch(ctx context.Context) (FetchResult, error) {
 	podNames, err := f.resolvePodNames(ctx)
 	if err != nil {
-		return Series{}, err
+		return FetchResult{}, err
 	}
 	if len(podNames) == 0 {
-		return Series{}, fmt.Errorf("no pods found for %s/%s", f.spec.TargetRef.Kind, f.spec.TargetRef.Name)
+		return FetchResult{}, fmt.Errorf("no pods found for %s/%s", f.spec.TargetRef.Kind, f.spec.TargetRef.Name)
 	}
 
 	list, err := f.factory.MetricsClient.PodMetricses(f.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return Series{}, fmt.Errorf("list pod metrics in namespace %q: %w", f.namespace, err)
+		return FetchResult{}, fmt.Errorf("list pod metrics in namespace %q: %w", f.namespace, err)
 	}
 
 	podNameSet := make(map[string]struct{}, len(podNames))
@@ -55,31 +55,41 @@ func (f *metricsServerFetcher) Fetch(ctx context.Context) (Series, error) {
 		podNameSet[name] = struct{}{}
 	}
 
-	var total float64
+	totals := make(map[autoscalingv1alpha1.ResourceMetric]float64, len(f.spec.Resources))
+	for _, metric := range f.spec.Resources {
+		totals[metric] = 0
+	}
+
 	var matched int
 	for _, item := range list.GetItems() {
 		if _, ok := podNameSet[item.GetName()]; !ok {
 			continue
 		}
-		switch f.spec.Metric {
-		case autoscalingv1alpha1.ResourceMetricCPU:
-			total += float64(item.CPUMillicores())
-		case autoscalingv1alpha1.ResourceMetricMemory:
-			total += float64(item.MemoryBytes())
-		default:
-			return Series{}, fmt.Errorf("unsupported metric %q", f.spec.Metric)
+		for _, metric := range f.spec.Resources {
+			switch metric {
+			case autoscalingv1alpha1.ResourceMetricCPU:
+				totals[metric] += float64(item.CPUMillicores())
+			case autoscalingv1alpha1.ResourceMetricMemory:
+				totals[metric] += float64(item.MemoryBytes())
+			default:
+				return FetchResult{}, fmt.Errorf("unsupported metric %q", metric)
+			}
 		}
 		matched++
 	}
 	if matched == 0 {
-		return Series{}, fmt.Errorf("metrics-server returned no pod metrics for %d target pods", len(podNames))
+		return FetchResult{}, fmt.Errorf("metrics-server returned no pod metrics for %d target pods", len(podNames))
 	}
 
 	now := f.factory.now()
-	return Series{
-		Values:     []float64{total},
-		Timestamps: []time.Time{now},
-	}, nil
+	out := FetchResult{ByResource: make(map[autoscalingv1alpha1.ResourceMetric]Series, len(totals))}
+	for metric, total := range totals {
+		out.ByResource[metric] = Series{
+			Values:     []float64{total},
+			Timestamps: []time.Time{now},
+		}
+	}
+	return out, nil
 }
 
 func (f *metricsServerFetcher) resolvePodNames(ctx context.Context) ([]string, error) {
@@ -143,6 +153,16 @@ func (f *metricsServerFetcher) podNamesForSelector(ctx context.Context, resolve 
 		names = append(names, pod.Name)
 	}
 	return names, nil
+}
+
+// HistoryKey returns the per-resource history buffer key for a NeuralAutoscaler.
+func HistoryKey(namespace, name string, resource autoscalingv1alpha1.ResourceMetric) string {
+	return fmt.Sprintf("%s/%s/%s", namespace, name, resource)
+}
+
+// HistoryPrefix returns the prefix for all history keys belonging to a NeuralAutoscaler.
+func HistoryPrefix(namespace, name string) string {
+	return fmt.Sprintf("%s/%s/", namespace, name)
 }
 
 // PodMetricsNamespaceClient is the namespace-scoped pod metrics API.

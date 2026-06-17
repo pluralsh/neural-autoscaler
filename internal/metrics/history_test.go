@@ -55,22 +55,22 @@ func TestHistoryStorePerKeyIsolation(t *testing.T) {
 	store := NewHistoryStore(4)
 	ts := time.Now()
 
-	store.Append("ns/a", 10, ts)
-	store.Append("ns/b", 20, ts)
+	store.Append("ns/a/cpu", 10, ts)
+	store.Append("ns/b/cpu", 20, ts)
 
-	if got := store.Len("ns/a"); got != 1 {
-		t.Fatalf("Len(ns/a) = %d, want 1", got)
+	if got := store.Len("ns/a/cpu"); got != 1 {
+		t.Fatalf("Len(ns/a/cpu) = %d, want 1", got)
 	}
-	if got := store.Len("ns/b"); got != 1 {
-		t.Fatalf("Len(ns/b) = %d, want 1", got)
+	if got := store.Len("ns/b/cpu"); got != 1 {
+		t.Fatalf("Len(ns/b/cpu) = %d, want 1", got)
 	}
 
-	store.Delete("ns/a")
-	if got := store.Len("ns/a"); got != 0 {
-		t.Fatalf("Len(ns/a) after delete = %d, want 0", got)
+	store.DeleteByPrefix("ns/a/")
+	if got := store.Len("ns/a/cpu"); got != 0 {
+		t.Fatalf("Len(ns/a/cpu) after delete = %d, want 0", got)
 	}
-	if got := store.Len("ns/b"); got != 1 {
-		t.Fatalf("Len(ns/b) after delete = %d, want 1", got)
+	if got := store.Len("ns/b/cpu"); got != 1 {
+		t.Fatalf("Len(ns/b/cpu) after delete = %d, want 1", got)
 	}
 }
 

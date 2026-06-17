@@ -36,10 +36,20 @@ func validateMetricsServerSource(spec MetricsServerSourceSpec) error {
 	default:
 		return fmt.Errorf("metricsServer.targetRef.kind %q is not supported", ref.Kind)
 	}
-	switch spec.Metric {
-	case ResourceMetricCPU, ResourceMetricMemory:
-	default:
-		return fmt.Errorf("metricsServer.metric %q is not supported", spec.Metric)
+	if len(spec.Resources) == 0 {
+		return fmt.Errorf("metricsServer.resources must contain at least one resource")
+	}
+	seen := make(map[ResourceMetric]struct{}, len(spec.Resources))
+	for _, r := range spec.Resources {
+		switch r {
+		case ResourceMetricCPU, ResourceMetricMemory:
+		default:
+			return fmt.Errorf("metricsServer.resources: unsupported resource %q", r)
+		}
+		if _, ok := seen[r]; ok {
+			return fmt.Errorf("metricsServer.resources: duplicate resource %q", r)
+		}
+		seen[r] = struct{}{}
 	}
 	return nil
 }

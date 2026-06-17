@@ -15,7 +15,20 @@ spec:
       targetRef:
         kind: Deployment
         name: api
-      metric: cpu
+      resources:
+        - cpu
+        - memory
   forecast:
     horizon: 12
     step: 1m
+  resize:
+    targetSelector:
+      matchLabels:
+        app: api
+    resources:
+      cpu:
+        min: 100m
+        max: "8"
+      memory:
+        min: 128Mi
+        max: 16Gi

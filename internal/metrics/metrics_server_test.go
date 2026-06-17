@@ -46,19 +46,27 @@ func TestMetricsServerFetcherFetch(t *testing.T) {
 		Type: autoscalingv1alpha1.MetricsSourceMetricsServer,
 		MetricsServer: &autoscalingv1alpha1.MetricsServerSourceSpec{
 			TargetRef: autoscalingv1alpha1.CrossVersionObjectReference{Kind: "Pod", Name: "api-1"},
-			Metric:    autoscalingv1alpha1.ResourceMetricCPU,
+			Resources: []autoscalingv1alpha1.ResourceMetric{
+				autoscalingv1alpha1.ResourceMetricCPU,
+				autoscalingv1alpha1.ResourceMetricMemory,
+			},
 		},
 	}, "default")
 	if err != nil {
 		t.Fatalf("NewFetcher() error = %v", err)
 	}
 
-	series, err := fetcher.Fetch(context.Background())
+	result, err := fetcher.Fetch(context.Background())
 	if err != nil {
 		t.Fatalf("Fetch() error = %v", err)
 	}
-	if len(series.Values) != 1 || series.Values[0] != 250 {
-		t.Fatalf("unexpected series: %#v", series)
+	cpu := result.ByResource[autoscalingv1alpha1.ResourceMetricCPU]
+	if len(cpu.Values) != 1 || cpu.Values[0] != 250 {
+		t.Fatalf("unexpected cpu series: %#v", cpu)
+	}
+	mem := result.ByResource[autoscalingv1alpha1.ResourceMetricMemory]
+	if len(mem.Values) != 1 || mem.Values[0] != float64(128*1024*1024) {
+		t.Fatalf("unexpected memory series: %#v", mem)
 	}
 }
 
@@ -119,5 +127,15 @@ func TestPodMetricAdapterAggregatesContainers(t *testing.T) {
 	}
 	if got := adapter.MemoryBytes(); got != pod.Containers[0].Usage.Memory().Value()+pod.Containers[1].Usage.Memory().Value() {
 		t.Fatalf("MemoryBytes() = %d", got)
+	}
+}
+
+func TestHistoryKey(t *testing.T) {
+	t.Parallel()
+
+	got := HistoryKey("ns", "workload", autoscalingv1alpha1.ResourceMetricCPU)
+	want := "ns/workload/cpu"
+	if got != want {
+		t.Fatalf("HistoryKey() = %q, want %q", got, want)
 	}
 }
