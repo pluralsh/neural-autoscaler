@@ -25,7 +25,9 @@ type TargetResult struct {
 	Memory *resource.Quantity
 }
 
-// ComputeTargets maps forecast peaks to per-pod requests with headroom and per-resource bounds.
+// ComputeTargets maps a cluster-wide forecast peak to per-pod container requests:
+// (peak × defaultHeadroomFactor) / podCount, then clamped to spec.resize.resources
+// min/max. Current requests are retained when no forecast peak exists for a resource.
 func ComputeTargets(in TargetInput) TargetResult {
 	out := TargetResult{}
 	if in.PodCount <= 0 {

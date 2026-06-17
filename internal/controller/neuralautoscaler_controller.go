@@ -62,6 +62,17 @@ type NeuralAutoscalerReconciler struct {
 //+kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;replicasets,verbs=get;list
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
+// Reconcile drives the predict→resize loop on each reconcile tick:
+//
+//  1. Fetch current usage from metrics-server for each configured resource and append
+//     the latest sample to an in-memory per-resource history buffer.
+//  2. When the buffer holds at least MinForecastSamples points, run the configured
+//     ONNX forecaster over that history to produce a future usage series.
+//  3. If spec.resize is set and forecasts are ready, derive per-pod container requests
+//     from forecast peaks (max over horizon and quantiles, headroom factor, divided
+//     by matching pod count) and clamp to spec.resize.resources min/max.
+//  4. Apply the new requests in place via the pods/resize subresource. Only requests
+//     are predicted; limits are raised only when they would fall below the new request.
 func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, reterr error) {
 	logger := log.FromContext(ctx)
 
