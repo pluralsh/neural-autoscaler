@@ -33,5 +33,5 @@ echo
 echo "Source repo: ${REPO}"
 echo "Run locally with:"
 echo "  MODEL_PATH=${MODEL_DIR}/model.onnx go run ./cmd/main.go \\"
-echo "    --model-path=${MODEL_DIR}/model.onnx --model-family=chronos2 \\"
+echo "    --model-path=${MODEL_DIR}/model.onnx \\"
 echo "    --onnx-runtime-lib-path=/path/to/libonnxruntime.so"

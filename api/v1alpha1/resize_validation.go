@@ -5,20 +5,12 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ValidateResize performs semantic validation for in-place resize configuration.
 func ValidateResize(spec *ResizeSpec) error {
 	if spec == nil {
 		return nil
-	}
-
-	if _, err := metav1.LabelSelectorAsSelector(&spec.TargetSelector); err != nil {
-		return fmt.Errorf("resize.targetSelector: %w", err)
-	}
-	if len(spec.TargetSelector.MatchLabels) == 0 && len(spec.TargetSelector.MatchExpressions) == 0 {
-		return fmt.Errorf("resize.targetSelector must specify matchLabels or matchExpressions")
 	}
 
 	if err := validateMinChangePercent("resize.minChangePercent", spec.MinChangePercent); err != nil {

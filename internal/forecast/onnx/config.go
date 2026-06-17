@@ -61,16 +61,21 @@ func ConfigFromForecast(cfg forecast.Config) (Config, error) {
 		return Config{}, fmt.Errorf("onnx model: %w", err)
 	}
 
-	modelFamily := parseModelFamily(opts[optionModelFamily])
+	ortVersion, err := parsePositiveInt(opts[optionORTAPIVersion], defaultORTAPIVersion)
+	if err != nil {
+		return Config{}, fmt.Errorf("parse %q: %w", optionORTAPIVersion, err)
+	}
+
+	runtimeLibPath := strings.TrimSpace(opts[optionRuntimeLibPath])
+
+	modelFamily, err := resolveModelFamily(opts[optionModelFamily], modelPath, runtimeLibPath, ortVersion)
+	if err != nil {
+		return Config{}, err
+	}
 
 	maxContext, err := parsePositiveInt(opts[optionMaxContext], defaultMaxContext)
 	if err != nil {
 		return Config{}, fmt.Errorf("parse %q: %w", optionMaxContext, err)
-	}
-
-	ortVersion, err := parsePositiveInt(opts[optionORTAPIVersion], defaultORTAPIVersion)
-	if err != nil {
-		return Config{}, fmt.Errorf("parse %q: %w", optionORTAPIVersion, err)
 	}
 
 	intraOpThreads, err := parsePositiveInt(opts[optionIntraOpThreads], defaultIntraOpThreads)
@@ -105,7 +110,7 @@ func ConfigFromForecast(cfg forecast.Config) (Config, error) {
 		ModelFamily:      modelFamily,
 		ModelPath:        modelPath,
 		MaxContext:       maxContext,
-		RuntimeLibPath:   strings.TrimSpace(opts[optionRuntimeLibPath]),
+		RuntimeLibPath:   runtimeLibPath,
 		ORTAPIVersion:    ortVersion,
 		IntraOpThreads:   intraOpThreads,
 		InputName:        inputName,
@@ -114,6 +119,17 @@ func ConfigFromForecast(cfg forecast.Config) (Config, error) {
 		BatchSize:        batchSize,
 		NumOutputPatches: numOutputPatches,
 	}, nil
+}
+
+func resolveModelFamily(rawFamily, modelPath, runtimeLibPath string, ortVersion int) (string, error) {
+	if strings.TrimSpace(rawFamily) != "" {
+		return parseModelFamily(rawFamily), nil
+	}
+	family, err := DiscoverModelFamily(modelPath, runtimeLibPath, ortVersion)
+	if err != nil {
+		return "", fmt.Errorf("discover model family: %w", err)
+	}
+	return family, nil
 }
 
 func parsePositiveInt(raw string, defaultValue int) (int, error) {

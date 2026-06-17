@@ -68,6 +68,9 @@ func TestMetricsServerFetcherFetch(t *testing.T) {
 	if len(mem.Values) != 1 || mem.Values[0] != float64(128*1024*1024) {
 		t.Fatalf("unexpected memory series: %#v", mem)
 	}
+	if len(result.PodNames) != 1 || result.PodNames[0] != "api-1" {
+		t.Fatalf("unexpected pod names: %#v", result.PodNames)
+	}
 }
 
 type fakePodMetricsClient struct {

@@ -22,9 +22,7 @@ spec:
     horizon: 12
     step: 1m
   resize:
-    targetSelector:
-      matchLabels:
-        app: api
+    minChangePercent: 5
     resources:
       cpu:
         min: 100m

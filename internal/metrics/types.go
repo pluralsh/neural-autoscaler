@@ -13,9 +13,11 @@ type Series struct {
 	Timestamps []time.Time
 }
 
-// FetchResult holds per-resource series from a metrics fetch.
+// FetchResult holds per-resource series and resolved target pods from a metrics fetch.
 type FetchResult struct {
 	ByResource map[autoscalingv1alpha1.ResourceMetric]Series
+	// PodNames lists pods resolved from metrics.metricsServer.targetRef.
+	PodNames []string
 }
 
 // Fetcher retrieves metric samples for a configured source.

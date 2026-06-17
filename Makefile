@@ -103,7 +103,6 @@ run-local: manifests generate fmt vet ## Run the controller locally with TimesFM
 	MODEL_PATH="$${MODEL_PATH:-$(shell pwd)/models/timesfm-2.5-onnx/onnx/model.onnx}" \
 	go run ./cmd/main.go \
 		--model-path="$${MODEL_PATH:-$(shell pwd)/models/timesfm-2.5-onnx/onnx/model.onnx}" \
-		--model-family=timesfm \
 		$(MANAGER_FORECAST_ARGS)
 
 ##@ Build

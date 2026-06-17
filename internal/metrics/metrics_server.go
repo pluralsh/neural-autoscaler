@@ -82,7 +82,10 @@ func (f *metricsServerFetcher) Fetch(ctx context.Context) (FetchResult, error) {
 	}
 
 	now := f.factory.now()
-	out := FetchResult{ByResource: make(map[autoscalingv1alpha1.ResourceMetric]Series, len(totals))}
+	out := FetchResult{
+		ByResource: make(map[autoscalingv1alpha1.ResourceMetric]Series, len(totals)),
+		PodNames:   append([]string(nil), podNames...),
+	}
 	for metric, total := range totals {
 		out.ByResource[metric] = Series{
 			Values:     []float64{total},

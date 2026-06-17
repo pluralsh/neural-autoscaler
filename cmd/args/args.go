@@ -7,8 +7,6 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	"github.com/pluralsh/neural-autoscaler/internal/forecast/onnx"
 )
 
 const (
@@ -32,7 +30,7 @@ var (
 	argModelPath              = flag.String("model-path", getEnv(EnvModelPath, ""),
 		"Path to ONNX model file (model.onnx). Enables ML forecasting when set. Fallback env: MODEL_PATH.")
 	argModelFamily            = flag.String("model-family", getEnv(EnvModelFamily, ""),
-		"ONNX model family: timesfm or chronos2. Fallback env: FORECAST_MODEL_FAMILY.")
+		"ONNX model family: timesfm or chronos2 (optional; auto-discovered from model when unset). Fallback env: FORECAST_MODEL_FAMILY.")
 	argTimesFMMaxContext      = flag.Int("timesfm-max-context", defaultTimesFMMaxContext,
 		"Maximum historical context length passed to TimesFM ONNX.")
 	argONNXRuntimeLibPath     = flag.String("onnx-runtime-lib-path", getEnv(EnvONNXRuntimeLibPath, ""),
@@ -56,11 +54,7 @@ func resolveEnvFallbacks() {
 		*argModelPath = os.Getenv(EnvModelPath)
 	}
 	if *argModelFamily == "" {
-		if v := os.Getenv(EnvModelFamily); v != "" {
-			*argModelFamily = v
-		} else {
-			*argModelFamily = onnx.ModelFamilyTimesFM
-		}
+		*argModelFamily = os.Getenv(EnvModelFamily)
 	}
 	if *argONNXRuntimeLibPath == "" {
 		*argONNXRuntimeLibPath = os.Getenv(EnvONNXRuntimeLibPath)

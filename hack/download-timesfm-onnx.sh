@@ -24,4 +24,4 @@ echo
 echo "Run locally with:"
 echo "  make run-local ONNX_RUNTIME_LIB_PATH=/path/to/libonnxruntime.so"
 echo "Or:"
-echo "  MODEL_PATH=${MODEL_DIR}/onnx/model.onnx go run ./cmd/main.go --model-path=${MODEL_DIR}/onnx/model.onnx --model-family=timesfm"
+echo "  MODEL_PATH=${MODEL_DIR}/onnx/model.onnx go run ./cmd/main.go --model-path=${MODEL_DIR}/onnx/model.onnx"

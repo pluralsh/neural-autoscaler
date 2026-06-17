@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func int32Ptr(v int32) *int32 { return &v }
@@ -13,9 +12,6 @@ func TestValidateResize(t *testing.T) {
 	t.Parallel()
 
 	valid := &ResizeSpec{
-		TargetSelector: metav1.LabelSelector{
-			MatchLabels: map[string]string{"app": "postgres"},
-		},
 		Resources: map[string]ResourceBoundsSpec{
 			string(ResourceMetricCPU): {
 				Min: strPtr("250m"),
@@ -43,27 +39,15 @@ func TestValidateResize(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "empty selector",
-			spec: &ResizeSpec{
-				TargetSelector: metav1.LabelSelector{},
-				Resources: map[string]ResourceBoundsSpec{
-					string(ResourceMetricCPU): {},
-				},
-			},
-			wantErr: true,
-		},
-		{
 			name: "no resources",
 			spec: &ResizeSpec{
-				TargetSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "db"}},
-				Resources:      map[string]ResourceBoundsSpec{},
+				Resources: map[string]ResourceBoundsSpec{},
 			},
 			wantErr: true,
 		},
 		{
 			name: "min exceeds max cpu",
 			spec: &ResizeSpec{
-				TargetSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "db"}},
 				Resources: map[string]ResourceBoundsSpec{
 					string(ResourceMetricCPU): {
 						Min: strPtr("2"),
@@ -76,7 +60,6 @@ func TestValidateResize(t *testing.T) {
 		{
 			name: "unsupported resource",
 			spec: &ResizeSpec{
-				TargetSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "db"}},
 				Resources: map[string]ResourceBoundsSpec{
 					"ephemeral-storage": {},
 				},
@@ -86,7 +69,6 @@ func TestValidateResize(t *testing.T) {
 		{
 			name: "invalid min quantity",
 			spec: &ResizeSpec{
-				TargetSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "db"}},
 				Resources: map[string]ResourceBoundsSpec{
 					string(ResourceMetricCPU): {Min: strPtr("not-a-quantity")},
 				},
@@ -96,7 +78,6 @@ func TestValidateResize(t *testing.T) {
 		{
 			name: "invalid global minChangePercent",
 			spec: &ResizeSpec{
-				TargetSelector:   metav1.LabelSelector{MatchLabels: map[string]string{"app": "db"}},
 				MinChangePercent: int32Ptr(101),
 				Resources: map[string]ResourceBoundsSpec{
 					string(ResourceMetricCPU): {},
@@ -107,7 +88,6 @@ func TestValidateResize(t *testing.T) {
 		{
 			name: "invalid per-resource minChangePercent",
 			spec: &ResizeSpec{
-				TargetSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "db"}},
 				Resources: map[string]ResourceBoundsSpec{
 					string(ResourceMetricCPU): {MinChangePercent: int32Ptr(-1)},
 				},

@@ -209,6 +209,41 @@ func TestComputeTargetsMemoryNormalizedAfterClamp(t *testing.T) {
 	}
 }
 
+func TestComputeTargetsCPUWithObservedPeakFloor(t *testing.T) {
+	t.Parallel()
+
+	resources := resizeResourcesFixture()
+	// Chronos median forecast for bursty CPU can stay near the duty-cycle average.
+	forecastPeak := 400.0
+	observedPeak := RecentPeak(burstyCPUSeriesFixture(), DefaultRecentPeakWindow)
+	effective := EffectivePeak(forecastPeak, observedPeak)
+
+	in := TargetInput{
+		ForecastPeaks: map[autoscalingv1alpha1.ResourceMetric]float64{
+			autoscalingv1alpha1.ResourceMetricCPU: effective,
+		},
+		PodCount: 2,
+		CurrentRequests: corev1.ResourceList{
+			corev1.ResourceCPU: resource.MustParse("100m"),
+		},
+		Resources: resources,
+	}
+
+	got := ComputeTargets(in)
+	want := resource.MustParse("1200m") // 2000m * 1.2 / 2 pods
+	if got.CPU.Cmp(want) != 0 {
+		t.Fatalf("CPU target = %s, want %s (effective peak %.0fm)", got.CPU.String(), want.String(), effective)
+	}
+}
+
+func burstyCPUSeriesFixture() []float64 {
+	out := make([]float64, 0, 120)
+	for range 30 {
+		out = append(out, 2000, 2000, 2000, 200)
+	}
+	return out
+}
+
 func TestForecastPeaks(t *testing.T) {
 	t.Parallel()
 

@@ -135,10 +135,12 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	forecasts := make(map[v1alpha1.ResourceMetric]forecast.Response)
+	historyByResource := make(map[v1alpha1.ResourceMetric]metrics.Series, len(na.Spec.Metrics.MetricsServer.Resources))
 	for _, resource := range na.Spec.Metrics.MetricsServer.Resources {
 		series := fetchResult.ByResource[resource]
 		key := metrics.HistoryKey(na.Namespace, na.Name, resource)
 		forecastSeries := r.accumulateMetricsServerHistory(key, series)
+		historyByResource[resource] = forecastSeries
 		if count := int32(len(forecastSeries.Values)); count > maxSamples {
 			maxSamples = count
 		}
@@ -167,8 +169,13 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if len(forecasts) == 0 {
 			logger.Info("skipping resize: forecast not ready")
 		} else {
+			targetNamespace := metricsTargetNamespace(na)
 			resizeReconciler := resize.Reconciler{Client: r.Client}
-			if err := resizeReconciler.Apply(ctx, na, forecasts); err != nil {
+			recentHistory := make(map[v1alpha1.ResourceMetric][]float64, len(historyByResource))
+			for resource, series := range historyByResource {
+				recentHistory[resource] = series.Values
+			}
+			if err := resizeReconciler.Apply(ctx, na, forecasts, recentHistory, fetchResult.PodNames, targetNamespace); err != nil {
 				logger.Error(err, "resize failed")
 			}
 		}
@@ -218,6 +225,7 @@ func (r *NeuralAutoscalerReconciler) runForecast(ctx context.Context, na *v1alph
 		Timestamps: series.Timestamps,
 		Horizon:    horizon,
 		Step:       step,
+		Quantiles:  []float64{0.9, 0.99},
 	}
 
 	resp, err := r.Forecaster.Forecast(ctx, req)
@@ -249,6 +257,13 @@ func (r *NeuralAutoscalerReconciler) runForecast(ctx context.Context, na *v1alph
 	logger.Info("forecast completed", logArgs...)
 
 	return resp, nil
+}
+
+func metricsTargetNamespace(na *v1alpha1.NeuralAutoscaler) string {
+	if na.Spec.Metrics.MetricsServer != nil && na.Spec.Metrics.MetricsServer.Namespace != "" {
+		return na.Spec.Metrics.MetricsServer.Namespace
+	}
+	return na.Namespace
 }
 
 func describeMetricTarget(spec v1alpha1.MetricsSourceSpec, resource v1alpha1.ResourceMetric) string {

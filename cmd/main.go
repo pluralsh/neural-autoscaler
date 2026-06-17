@@ -59,8 +59,12 @@ func main() {
 
 	var forecaster forecast.Forecaster
 	if args.ForecastEnabled() {
-		var err error
-		forecaster, err = onnx.New(forecast.Config{Options: args.ForecastOptions()})
+		onnxCfg, err := onnx.ConfigFromForecast(forecast.Config{Options: args.ForecastOptions()})
+		if err != nil {
+			setupLog.Error(err, "unable to load ONNX forecast model")
+			os.Exit(1)
+		}
+		forecaster, err = onnx.NewFromConfig(onnxCfg)
 		if err != nil {
 			setupLog.Error(err, "unable to load ONNX forecast model")
 			os.Exit(1)
@@ -70,7 +74,7 @@ func main() {
 				setupLog.Error(err, "unable to close ONNX forecast model")
 			}
 		}()
-		setupLog.Info("loaded ONNX forecast model", "family", args.ModelFamily(), "path", args.ModelPath())
+		setupLog.Info("loaded ONNX forecast model", "family", onnxCfg.ModelFamily, "path", onnxCfg.ModelPath)
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{

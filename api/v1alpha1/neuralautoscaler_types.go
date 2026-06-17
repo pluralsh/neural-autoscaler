@@ -131,17 +131,10 @@ type PrometheusSourceSpec struct {
 // minChangePercent override are both unset.
 const DefaultMinChangePercent int32 = 10
 
-// ResizeSpec configures in-place vertical scaling of pods selected by label.
-// Each entry in resources is driven by the matching metric from metrics.metricsServer.resources.
+// ResizeSpec configures in-place vertical scaling of pods resolved from
+// metrics.metricsServer.targetRef. Each entry in resources is driven by the
+// matching metric from metrics.metricsServer.resources.
 type ResizeSpec struct {
-	// TargetSelector identifies pods to resize.
-	// +kubebuilder:validation:Required
-	TargetSelector metav1.LabelSelector `json:"targetSelector"`
-
-	// Namespace overrides the NeuralAutoscaler namespace for pod selection and resize.
-	// Defaults to the NeuralAutoscaler object namespace when unset.
-	Namespace string `json:"namespace,omitempty"`
-
 	// MinChangePercent is the minimum relative change required before a resource
 	// request is updated in place. Compares |new-old|/old*100; when old is zero,
 	// any positive new value counts as a change. Defaults to 10 when unset.

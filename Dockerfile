@@ -20,7 +20,7 @@
 #
 # Environment (forecast flags also accept CLI equivalents):
 #   MODEL_PATH                Path to model.onnx
-#   FORECAST_MODEL_FAMILY     timesfm | chronos2 (default: timesfm)
+#   FORECAST_MODEL_FAMILY     timesfm | chronos2 (optional; auto-discovered when unset)
 #   ONNX_RUNTIME_LIB_PATH     libonnxruntime.so (default: /opt/onnxruntime/lib/libonnxruntime.so)
 #   ONNX_RUNTIME_API_VERSION  ORT C API version for purego (default: 23)
 
@@ -71,7 +71,6 @@ COPY --from=builder /out/manager /manager
 ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib \
     ONNX_RUNTIME_LIB_PATH=/opt/onnxruntime/lib/libonnxruntime.so \
     ONNX_RUNTIME_API_VERSION=23 \
-    FORECAST_MODEL_FAMILY=timesfm \
     MODEL_PATH=
 
 ENTRYPOINT ["/manager"]

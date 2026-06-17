@@ -1,5 +1,5 @@
 # Demo workload for neural-autoscaler in-place resize testing.
-# Targeted by NeuralAutoscaler sample (targetRef.name: api, resize.targetSelector app: api).
+# Targeted by NeuralAutoscaler sample (metrics.metricsServer.targetRef.name: api).
 #
 # Watch resize:
 #   kubectl get pods -l app=api -w

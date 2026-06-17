@@ -20,7 +20,11 @@ func New(cfg forecast.Config) (forecast.Forecaster, error) {
 	if err != nil {
 		return nil, err
 	}
+	return NewFromConfig(onnxCfg)
+}
 
+// NewFromConfig constructs an ONNX forecaster from a resolved onnx.Config.
+func NewFromConfig(onnxCfg Config) (forecast.Forecaster, error) {
 	switch onnxCfg.ModelFamily {
 	case ModelFamilyTimesFM:
 		return newTimesFM(onnxCfg)
@@ -35,7 +39,7 @@ func New(cfg forecast.Config) (forecast.Forecaster, error) {
 
 func parseModelFamily(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "", ModelFamilyTimesFM:
+	case ModelFamilyTimesFM:
 		return ModelFamilyTimesFM
 	case ModelFamilyChronos2, "chronos", "chronos-2", "chronos2-onnx":
 		return ModelFamilyChronos2

@@ -43,18 +43,3 @@ func TestChronosQuantileHorizon(t *testing.T) {
 	}
 }
 
-func TestParseModelFamily(t *testing.T) {
-	t.Parallel()
-
-	cases := map[string]string{
-		"":          ModelFamilyTimesFM,
-		"timesfm":   ModelFamilyTimesFM,
-		"chronos2":  ModelFamilyChronos2,
-		"chronos-2": ModelFamilyChronos2,
-	}
-	for raw, want := range cases {
-		if got := parseModelFamily(raw); got != want {
-			t.Fatalf("parseModelFamily(%q) = %q, want %q", raw, got, want)
-		}
-	}
-}
