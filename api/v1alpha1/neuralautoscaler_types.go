@@ -127,6 +127,10 @@ type PrometheusSourceSpec struct {
 	Auth *corev1.SecretKeySelector `json:"auth,omitempty"`
 }
 
+// DefaultMinChangePercent is applied when resize.minChangePercent and a resource's
+// minChangePercent override are both unset.
+const DefaultMinChangePercent int32 = 10
+
 // ResizeSpec configures in-place vertical scaling of pods selected by label.
 // Each entry in resources is driven by the matching metric from metrics.metricsServer.resources.
 type ResizeSpec struct {
@@ -137,6 +141,14 @@ type ResizeSpec struct {
 	// Namespace overrides the NeuralAutoscaler namespace for pod selection and resize.
 	// Defaults to the NeuralAutoscaler object namespace when unset.
 	Namespace string `json:"namespace,omitempty"`
+
+	// MinChangePercent is the minimum relative change required before a resource
+	// request is updated in place. Compares |new-old|/old*100; when old is zero,
+	// any positive new value counts as a change. Defaults to 10 when unset.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	MinChangePercent *int32 `json:"minChangePercent,omitempty"`
 
 	// Resources defines per-resource resize bounds. Keys must be cpu and/or memory.
 	// +kubebuilder:validation:Required
@@ -153,6 +165,12 @@ type ResourceBoundsSpec struct {
 	// Max is the maximum allowed quantity, for example "8" or "16Gi".
 	// +optional
 	Max *string `json:"max,omitempty"`
+
+	// MinChangePercent overrides resize.minChangePercent for this resource.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	MinChangePercent *int32 `json:"minChangePercent,omitempty"`
 }
 
 // ForecastSpec configures optional ONNX forecasting for fetched metrics.

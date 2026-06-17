@@ -2,6 +2,7 @@ package resize
 
 import (
 	"math"
+	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -10,6 +11,12 @@ import (
 )
 
 const defaultHeadroomFactor = 1.2
+
+const (
+	bytesPerKi = 1024
+	bytesPerMi = 1024 * bytesPerKi
+	bytesPerGi = 1024 * bytesPerMi
+)
 
 // TargetInput supplies forecast and workload context for per-pod target calculation.
 type TargetInput struct {
@@ -51,11 +58,44 @@ func ComputeTargets(in TargetInput) TargetResult {
 				desired = resource.NewQuantity(int64(math.Ceil(perPodBytes)), resource.BinarySI)
 			}
 			clamped := autoscalingv1alpha1.ClampQuantity(*desired, bounds)
-			out.Memory = &clamped
+			normalized := normalizeMemoryQuantity(clamped)
+			normalized = autoscalingv1alpha1.ClampQuantity(normalized, bounds)
+			out.Memory = &normalized
 		}
 	}
 
 	return out
+}
+
+// normalizeMemoryQuantity rounds memory up to whole Ki, Mi, or Gi so pod specs
+// use human-readable units instead of raw byte strings.
+func normalizeMemoryQuantity(q resource.Quantity) resource.Quantity {
+	bytes := q.Value()
+	if bytes <= 0 {
+		return q
+	}
+
+	var unit string
+	var whole int64
+	switch {
+	case bytes >= bytesPerGi:
+		unit = "Gi"
+		whole = (bytes + bytesPerGi - 1) / bytesPerGi
+	case bytes >= bytesPerMi:
+		unit = "Mi"
+		whole = (bytes + bytesPerMi - 1) / bytesPerMi
+	case bytes >= bytesPerKi:
+		unit = "Ki"
+		whole = (bytes + bytesPerKi - 1) / bytesPerKi
+	default:
+		return q
+	}
+
+	normalized := resource.MustParse(strconv.FormatInt(whole, 10) + unit)
+	if normalized.Cmp(q) < 0 {
+		return q
+	}
+	return normalized
 }
 
 func currentQuantity(list corev1.ResourceList, name corev1.ResourceName) *resource.Quantity {

@@ -7,6 +7,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func int32Ptr(v int32) *int32 { return &v }
+
 func TestValidateResize(t *testing.T) {
 	t.Parallel()
 
@@ -87,6 +89,27 @@ func TestValidateResize(t *testing.T) {
 				TargetSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "db"}},
 				Resources: map[string]ResourceBoundsSpec{
 					string(ResourceMetricCPU): {Min: strPtr("not-a-quantity")},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid global minChangePercent",
+			spec: &ResizeSpec{
+				TargetSelector:   metav1.LabelSelector{MatchLabels: map[string]string{"app": "db"}},
+				MinChangePercent: int32Ptr(101),
+				Resources: map[string]ResourceBoundsSpec{
+					string(ResourceMetricCPU): {},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid per-resource minChangePercent",
+			spec: &ResizeSpec{
+				TargetSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "db"}},
+				Resources: map[string]ResourceBoundsSpec{
+					string(ResourceMetricCPU): {MinChangePercent: int32Ptr(-1)},
 				},
 			},
 			wantErr: true,

@@ -42,7 +42,7 @@ const (
 	conditionTypeMetricsReady = "MetricsReady"
 	defaultForecastHorizon    = 12
 	defaultForecastStep       = time.Minute
-	defaultRequeueInterval    = time.Minute
+	defaultRequeueInterval    = 20 * time.Second
 )
 
 // NeuralAutoscalerReconciler reconciles a NeuralAutoscaler object.

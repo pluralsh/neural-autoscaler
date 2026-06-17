@@ -60,14 +60,14 @@ func (r *Reconciler) Apply(ctx context.Context, na *autoscalingv1alpha1.NeuralAu
 
 	podCount := len(podList.Items)
 	for _, pod := range podList.Items {
-		if err := r.resizePod(ctx, pod, spec.Resources, forecastPeaks, podCount); err != nil {
+		if err := r.resizePod(ctx, pod, spec, forecastPeaks, podCount); err != nil {
 			logger.Error(err, "pod resize failed", "pod", client.ObjectKeyFromObject(&pod))
 		}
 	}
 	return nil
 }
 
-func (r *Reconciler) resizePod(ctx context.Context, pod corev1.Pod, resources map[string]autoscalingv1alpha1.ResourceBoundsSpec, forecastPeaks map[autoscalingv1alpha1.ResourceMetric]float64, podCount int) error {
+func (r *Reconciler) resizePod(ctx context.Context, pod corev1.Pod, spec *autoscalingv1alpha1.ResizeSpec, forecastPeaks map[autoscalingv1alpha1.ResourceMetric]float64, podCount int) error {
 	if pod.DeletionTimestamp != nil {
 		return nil
 	}
@@ -81,13 +81,22 @@ func (r *Reconciler) resizePod(ctx context.Context, pod corev1.Pod, resources ma
 		ForecastPeaks:   forecastPeaks,
 		PodCount:        podCount,
 		CurrentRequests: current,
-		Resources:       resources,
+		Resources:       spec.Resources,
 	})
+	targets, changed := ApplyMinChangeThreshold(current, targets, spec.MinChangePercent, spec.Resources)
+	if !changed {
+		log.FromContext(ctx).V(1).Info(
+			"skipping pod resize: change below minChangePercent threshold",
+			"pod", pod.Name,
+			"minChangePercent", formatMinChangePercent(spec),
+		)
+		return nil
+	}
 	if !targetsChanged(current, targets) {
 		return nil
 	}
 
-	resizePod := buildResizePod(pod, targets, resources)
+	resizePod := buildResizePod(pod, targets, spec.Resources)
 	logger := log.FromContext(ctx)
 	logger.Info("resizing pod in place",
 		"pod", pod.Name,
@@ -161,6 +170,13 @@ func resizeInProgress(pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+func formatMinChangePercent(spec *autoscalingv1alpha1.ResizeSpec) any {
+	if spec.MinChangePercent != nil {
+		return *spec.MinChangePercent
+	}
+	return autoscalingv1alpha1.DefaultMinChangePercent
 }
 
 func formatChange(current corev1.ResourceList, name corev1.ResourceName, desired *resource.Quantity) string {

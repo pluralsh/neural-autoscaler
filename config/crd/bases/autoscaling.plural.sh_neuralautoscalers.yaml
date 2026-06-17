@@ -195,6 +195,15 @@ spec:
                 description: Resize optionally enables in-place pod resource resizing
                   after a forecast is available.
                 properties:
+                  minChangePercent:
+                    description: |-
+                      MinChangePercent is the minimum relative change required before a resource
+                      request is updated in place. Compares |new-old|/old*100; when old is zero,
+                      any positive new value counts as a change. Defaults to 10 when unset.
+                    format: int32
+                    maximum: 100
+                    minimum: 0
+                    type: integer
                   namespace:
                     description: |-
                       Namespace overrides the NeuralAutoscaler namespace for pod selection and resize.
@@ -213,6 +222,13 @@ spec:
                           description: Min is the minimum allowed quantity, for example
                             "250m" or "512Mi".
                           type: string
+                        minChangePercent:
+                          description: MinChangePercent overrides resize.minChangePercent
+                            for this resource.
+                          format: int32
+                          maximum: 100
+                          minimum: 0
+                          type: integer
                       type: object
                     description: Resources defines per-resource resize bounds. Keys
                       must be cpu and/or memory.

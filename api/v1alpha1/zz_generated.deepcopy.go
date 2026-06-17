@@ -284,6 +284,11 @@ func (in *PrometheusSourceSpec) DeepCopy() *PrometheusSourceSpec {
 func (in *ResizeSpec) DeepCopyInto(out *ResizeSpec) {
 	*out = *in
 	in.TargetSelector.DeepCopyInto(&out.TargetSelector)
+	if in.MinChangePercent != nil {
+		in, out := &in.MinChangePercent, &out.MinChangePercent
+		*out = new(int32)
+		**out = **in
+	}
 	if in.Resources != nil {
 		in, out := &in.Resources, &out.Resources
 		*out = make(map[string]ResourceBoundsSpec, len(*in))
@@ -314,6 +319,11 @@ func (in *ResourceBoundsSpec) DeepCopyInto(out *ResourceBoundsSpec) {
 	if in.Max != nil {
 		in, out := &in.Max, &out.Max
 		*out = new(string)
+		**out = **in
+	}
+	if in.MinChangePercent != nil {
+		in, out := &in.MinChangePercent, &out.MinChangePercent
+		*out = new(int32)
 		**out = **in
 	}
 }

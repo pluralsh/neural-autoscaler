@@ -115,8 +115,95 @@ func TestComputeTargetsMemoryFromForecast(t *testing.T) {
 	if got.Memory == nil {
 		t.Fatal("expected memory target")
 	}
-	// 2Gi * 1.2 / 2 pods = ~1.2Gi
-	want := resource.MustParse("1288490189")
+	// 2Gi * 1.2 / 2 pods = ~1.2Gi, rounded up to 2Gi
+	want := resource.MustParse("2Gi")
+	if got.Memory.Cmp(want) != 0 {
+		t.Fatalf("memory target = %s, want %s", got.Memory.String(), want.String())
+	}
+	if got.Memory.String() != "2Gi" {
+		t.Fatalf("memory target format = %q, want human-readable Mi/Gi not raw bytes", got.Memory.String())
+	}
+}
+
+func TestNormalizeMemoryQuantity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "raw bytes to Mi ceil",
+			input: "229731402",
+			want:  "220Mi",
+		},
+		{
+			name:  "exact Mi unchanged",
+			input: "512Mi",
+			want:  "512Mi",
+		},
+		{
+			name:  "exact Gi unchanged",
+			input: "1Gi",
+			want:  "1Gi",
+		},
+		{
+			name:  "sub Mi rounds up to Mi",
+			input: "1048577",
+			want:  "2Mi",
+		},
+		{
+			name:  "above 1024Mi uses Gi",
+			input: "1288490189",
+			want:  "2Gi",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := normalizeMemoryQuantity(resource.MustParse(tt.input))
+			want := resource.MustParse(tt.want)
+			if got.Cmp(want) != 0 {
+				t.Fatalf("normalizeMemoryQuantity(%s) = %s, want %s", tt.input, got.String(), want.String())
+			}
+			if got.Cmp(resource.MustParse(tt.input)) < 0 {
+				t.Fatalf("normalized value %s is less than input %s", got.String(), tt.input)
+			}
+		})
+	}
+}
+
+func TestComputeTargetsMemoryNormalizedAfterClamp(t *testing.T) {
+	t.Parallel()
+
+	resources := map[string]autoscalingv1alpha1.ResourceBoundsSpec{
+		string(autoscalingv1alpha1.ResourceMetricMemory): {
+			Min: strPtr("128Mi"),
+			Max: strPtr("16Gi"),
+		},
+	}
+	in := TargetInput{
+		ForecastPeaks: map[autoscalingv1alpha1.ResourceMetric]float64{
+			autoscalingv1alpha1.ResourceMetricMemory: 191442835,
+		},
+		PodCount: 1,
+		CurrentRequests: corev1.ResourceList{
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		},
+		Resources: resources,
+	}
+
+	got := ComputeTargets(in)
+	if got.Memory == nil {
+		t.Fatal("expected memory target")
+	}
+	if got.Memory.String() == "229731402" {
+		t.Fatal("memory target still shows raw bytes")
+	}
+	want := resource.MustParse("220Mi")
 	if got.Memory.Cmp(want) != 0 {
 		t.Fatalf("memory target = %s, want %s", got.Memory.String(), want.String())
 	}

@@ -21,7 +21,21 @@ func ValidateResize(spec *ResizeSpec) error {
 		return fmt.Errorf("resize.targetSelector must specify matchLabels or matchExpressions")
 	}
 
+	if err := validateMinChangePercent("resize.minChangePercent", spec.MinChangePercent); err != nil {
+		return err
+	}
+
 	return validateResizeResources(spec.Resources)
+}
+
+func validateMinChangePercent(field string, value *int32) error {
+	if value == nil {
+		return nil
+	}
+	if *value < 0 || *value > 100 {
+		return fmt.Errorf("%s must be between 0 and 100", field)
+	}
+	return nil
 }
 
 func validateResizeResources(resources map[string]ResourceBoundsSpec) error {
@@ -59,6 +73,9 @@ func validateResourceBoundsSpec(key string, bounds ResourceBoundsSpec) error {
 	}
 	if minQ != nil && maxQ != nil && minQ.Cmp(*maxQ) > 0 {
 		return fmt.Errorf("min (%s) exceeds max (%s)", minQ.String(), maxQ.String())
+	}
+	if err := validateMinChangePercent("minChangePercent", bounds.MinChangePercent); err != nil {
+		return err
 	}
 	_ = key
 	return nil
