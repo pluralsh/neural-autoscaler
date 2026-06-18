@@ -57,9 +57,9 @@ type NeuralAutoscalerReconciler struct {
 //+kubebuilder:rbac:groups=autoscaling.plural.sh,resources=neuralautoscalers/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=autoscaling.plural.sh,resources=neuralautoscalers/finalizers,verbs=update
 //+kubebuilder:rbac:groups=metrics.k8s.io,resources=pods,verbs=get;list
-//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;update
+//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;update
 //+kubebuilder:rbac:groups="",resources=pods/resize,verbs=update
-//+kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;replicasets,verbs=get;list
+//+kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;replicasets,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 // Reconcile drives the predict→resize loop on each reconcile tick:

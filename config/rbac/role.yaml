@@ -12,6 +12,7 @@ rules:
   - get
   - list
   - update
+  - watch
 - apiGroups:
   - ""
   resources:
@@ -33,6 +34,7 @@ rules:
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - autoscaling.plural.sh
   resources:
