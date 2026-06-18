@@ -10,8 +10,8 @@ import (
 const (
 	optionModelFamily = "model_family"
 
-	ModelFamilyTimesFM   = "timesfm"
-	ModelFamilyChronos2  = "chronos2"
+	ModelFamilyTimesFM  = "timesfm"
+	ModelFamilyChronos2 = "chronos2"
 )
 
 // New constructs an ONNX forecaster for the configured model family.

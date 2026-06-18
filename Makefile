@@ -166,14 +166,18 @@ helm-package: chart-crds ## Package the Helm chart into dist/.
 	$(HELM) package $(CHART_DIR) --destination $(DIST_DIR)
 
 .PHONY: release
-release: chart-crds ## Bump chart version, commit, tag vX.Y.Z, and push (triggers CD image publish).
-	@LATEST_TAG=$$(git describe --tags `git rev-list --tags --max-count=1` --match="v*" 2>/dev/null) ;\
-	if [ $$? -ne 0 ]; then \
-		echo Could not find latest tag ;\
+release: chart-crds ## Bump chart version, commit, tag vX.Y.Z, and push (triggers CD image publish). Override: VERSION=0.2.0
+	@if [ -n "$(VERSION)" ]; then \
+		version="$(VERSION)" ;\
 	else \
-		echo Latest tag: $${LATEST_TAG} ;\
+		LATEST_TAG=$$(git describe --tags "$$(git rev-list --tags --max-count=1 2>/dev/null)" --match="v*" 2>/dev/null || true) ;\
+		if [ -z "$$LATEST_TAG" ]; then \
+			echo "No prior v* tags found (first release)" ;\
+		else \
+			echo "Latest tag: $$LATEST_TAG" ;\
+		fi ;\
+		read -p "Version (without v prefix, e.g. 0.2.0): " version ;\
 	fi ;\
-	read -p "Version (without v prefix, e.g. 0.2.0): " version ;\
 	if ! echo "$$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$$'; then \
 		echo "Version must be semver (e.g. 0.2.0)" >&2 ;\
 		exit 1 ;\

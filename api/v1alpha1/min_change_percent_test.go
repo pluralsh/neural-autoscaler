@@ -15,15 +15,15 @@ func TestEffectiveMinChangePercent(t *testing.T) {
 		want        int32
 	}{
 		{
-			name: "per-resource override",
-			global: &global,
+			name:        "per-resource override",
+			global:      &global,
 			perResource: &perResource,
-			want: 20,
+			want:        20,
 		},
 		{
-			name: "global value",
+			name:   "global value",
 			global: &global,
-			want: 10,
+			want:   10,
 		},
 		{
 			name: "default when unset",

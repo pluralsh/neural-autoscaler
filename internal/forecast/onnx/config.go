@@ -10,15 +10,15 @@ import (
 )
 
 const (
-	optionModelPath       = "model_path"
-	optionMaxContext      = "max_context"
-	optionRuntimeLibPath  = "runtime_lib_path"
-	optionORTAPIVersion   = "ort_api_version"
-	optionIntraOpThreads  = "intra_op_threads"
-	optionInputName       = "input_name"
-	optionMeanOutputName  = "mean_output_name"
-	optionFullOutputName  = "full_output_name"
-	optionBatchSize       = "batch_size"
+	optionModelPath        = "model_path"
+	optionMaxContext       = "max_context"
+	optionRuntimeLibPath   = "runtime_lib_path"
+	optionORTAPIVersion    = "ort_api_version"
+	optionIntraOpThreads   = "intra_op_threads"
+	optionInputName        = "input_name"
+	optionMeanOutputName   = "mean_output_name"
+	optionFullOutputName   = "full_output_name"
+	optionBatchSize        = "batch_size"
 	optionNumOutputPatches = "num_output_patches"
 
 	defaultMaxContext     = 1024
@@ -34,17 +34,17 @@ const (
 )
 
 type Config struct {
-	ModelFamily       string
-	ModelPath         string
-	MaxContext        int
-	RuntimeLibPath    string
-	ORTAPIVersion     int
-	IntraOpThreads    int
-	InputName         string
-	MeanOutputName    string
-	FullOutputName    string
-	BatchSize         int
-	NumOutputPatches  int
+	ModelFamily      string
+	ModelPath        string
+	MaxContext       int
+	RuntimeLibPath   string
+	ORTAPIVersion    int
+	IntraOpThreads   int
+	InputName        string
+	MeanOutputName   string
+	FullOutputName   string
+	BatchSize        int
+	NumOutputPatches int
 }
 
 func ConfigFromForecast(cfg forecast.Config) (Config, error) {

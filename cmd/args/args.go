@@ -10,32 +10,32 @@ import (
 )
 
 const (
-	EnvModelPath            = "MODEL_PATH"
-	EnvModelFamily          = "FORECAST_MODEL_FAMILY"
-	EnvONNXRuntimeLibPath   = "ONNX_RUNTIME_LIB_PATH"
+	EnvModelPath             = "MODEL_PATH"
+	EnvModelFamily           = "FORECAST_MODEL_FAMILY"
+	EnvONNXRuntimeLibPath    = "ONNX_RUNTIME_LIB_PATH"
 	EnvONNXRuntimeAPIVersion = "ONNX_RUNTIME_API_VERSION"
 
-	defaultMetricsAddress          = ":8080"
-	defaultProbeAddress            = ":8081"
-	defaultTimesFMMaxContext       = 1024
-	defaultONNXRuntimeAPIVersion   = 23
-	defaultIntraOpThreads          = 4
+	defaultMetricsAddress        = ":8080"
+	defaultProbeAddress          = ":8081"
+	defaultTimesFMMaxContext     = 1024
+	defaultONNXRuntimeAPIVersion = 23
+	defaultIntraOpThreads        = 4
 )
 
 var (
-	argMetricsAddr            = flag.String("metrics-bind-address", defaultMetricsAddress, "The address the metric endpoint binds to.")
-	argProbeAddr              = flag.String("health-probe-bind-address", defaultProbeAddress, "The address the probe endpoint binds to.")
-	argEnableLeaderElection   = flag.Bool("leader-elect", false,
+	argMetricsAddr          = flag.String("metrics-bind-address", defaultMetricsAddress, "The address the metric endpoint binds to.")
+	argProbeAddr            = flag.String("health-probe-bind-address", defaultProbeAddress, "The address the probe endpoint binds to.")
+	argEnableLeaderElection = flag.Bool("leader-elect", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
-	argModelPath              = flag.String("model-path", getEnv(EnvModelPath, ""),
+	argModelPath = flag.String("model-path", getEnv(EnvModelPath, ""),
 		"Path to ONNX model file (model.onnx). Enables ML forecasting when set. Fallback env: MODEL_PATH.")
-	argModelFamily            = flag.String("model-family", getEnv(EnvModelFamily, ""),
+	argModelFamily = flag.String("model-family", getEnv(EnvModelFamily, ""),
 		"ONNX model family: timesfm or chronos2 (optional; auto-discovered from model when unset). Fallback env: FORECAST_MODEL_FAMILY.")
-	argTimesFMMaxContext      = flag.Int("timesfm-max-context", defaultTimesFMMaxContext,
+	argTimesFMMaxContext = flag.Int("timesfm-max-context", defaultTimesFMMaxContext,
 		"Maximum historical context length passed to TimesFM ONNX.")
-	argONNXRuntimeLibPath     = flag.String("onnx-runtime-lib-path", getEnv(EnvONNXRuntimeLibPath, ""),
+	argONNXRuntimeLibPath = flag.String("onnx-runtime-lib-path", getEnv(EnvONNXRuntimeLibPath, ""),
 		"Optional path to libonnxruntime shared library. Fallback env: ONNX_RUNTIME_LIB_PATH.")
-	argONNXRuntimeAPIVersion  = flag.Int("onnx-runtime-api-version", getEnvInt(EnvONNXRuntimeAPIVersion, defaultONNXRuntimeAPIVersion),
+	argONNXRuntimeAPIVersion = flag.Int("onnx-runtime-api-version", getEnvInt(EnvONNXRuntimeAPIVersion, defaultONNXRuntimeAPIVersion),
 		"ONNX Runtime API version used by onnxruntime-purego (23).")
 )
 

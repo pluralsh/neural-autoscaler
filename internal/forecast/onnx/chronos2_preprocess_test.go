@@ -42,4 +42,3 @@ func TestChronosQuantileHorizon(t *testing.T) {
 		t.Fatalf("unexpected median horizon: %v", got)
 	}
 }
-
