@@ -48,19 +48,37 @@ Point `targetRef` at a Deployment, StatefulSet, or ReplicaSet in the same namesp
 
 ## Quick start
 
-**Prerequisites:** Kubernetes 1.27+ with in-place pod vertical scaling (`InPlacePodVerticalScaling`; enabled by default on 1.33+), and metrics-server installed in the cluster.
+### Prerequisites
+
+- Kubernetes **1.27+** with [in-place pod vertical scaling](https://kubernetes.io/docs/concepts/workloads/pods/pod-resize/) (`InPlacePodVerticalScaling`; enabled by default on 1.33+). For local kind clusters on Kubernetes < 1.33, enable the feature gate with `hack/kind-inplace-config.yaml`.
+- [metrics-server](https://github.com/kubernetes-sigs/metrics-server) installed in the cluster.
+
+### Install the operator
+
+The chart pulls the controller image from `ghcr.io/pluralsh/neural-autoscaler`. Set `image.tag` to the release version you are installing (chart default: `0.2.0`).
+
+```bash
+helm install neural-autoscaler ./charts/neural-autoscaler \
+  --namespace neural-autoscaler-system \
+  --create-namespace
+```
+
+### Local development
 
 ```bash
 # Download the Chronos-2 ONNX model (needed for local runs and image builds)
 make download-chronos-onnx
 
-# Install the operator via Helm
-helm install neural-autoscaler charts/neural-autoscaler -n neural-autoscaler --create-namespace
-
-# Or run the controller locally against your kubeconfig
+# Run the controller locally against your kubeconfig
 make run-local
 ```
 
-Apply the sample CR after installing: `kubectl apply -f config/samples/autoscaling_v1alpha1_neuralautoscaler.yaml`
+### Upgrade / uninstall
 
-For local kind clusters on Kubernetes < 1.33, enable the feature gate with `hack/kind-inplace-config.yaml`.
+```bash
+helm upgrade neural-autoscaler ./charts/neural-autoscaler \
+  --namespace neural-autoscaler-system \
+  --set image.tag=<version>
+
+helm uninstall neural-autoscaler --namespace neural-autoscaler-system
+```
