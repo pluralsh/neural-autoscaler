@@ -47,7 +47,7 @@ Selector labels
 {{- define "neural-autoscaler.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "neural-autoscaler.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
-control-plane: controller-manager
+control-plane: neural-autoscaler
 {{- end }}
 
 {{/*
@@ -55,7 +55,7 @@ Create the name of the service account to use
 */}}
 {{- define "neural-autoscaler.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (printf "%s-controller-manager" (include "neural-autoscaler.fullname" .)) .Values.serviceAccount.name }}
+{{- default (printf "%s" (include "neural-autoscaler.fullname" .)) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}

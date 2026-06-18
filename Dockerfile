@@ -65,6 +65,12 @@ COPY --from=ort /opt/onnxruntime/lib/ /opt/onnxruntime/lib/
 COPY --from=builder /out/manager /manager
 COPY models/chronos-2-onnx/model.onnx /models/chronos-2-onnx/model.onnx
 
+RUN useradd -r -u 65532 -g users -d /nonexistent -s /usr/sbin/nologin manager \
+    && chown -R 65532:users /models \
+    && chmod -R a+rX /opt/onnxruntime
+
+USER 65532:65532
+
 ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib \
     ONNX_RUNTIME_LIB_PATH=/opt/onnxruntime/lib/libonnxruntime.so \
     ONNX_RUNTIME_API_VERSION=23 \

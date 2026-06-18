@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "neural-autoscaler.fullname" . }}-controller-manager
+  name: {{ include "neural-autoscaler.fullname" . }}
   labels:
     app.kubernetes.io/component: manager
     {{- include "neural-autoscaler.labels" . | nindent 4 }}

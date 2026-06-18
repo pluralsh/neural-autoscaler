@@ -12,7 +12,7 @@ with:
 Verify the controller:
 
   kubectl -n {{ .Release.Namespace }} get deploy,pods,svc
-  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "neural-autoscaler.fullname" . }}-controller-manager
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "neural-autoscaler.fullname" . }}
 
 Create a NeuralAutoscaler (adjust target workload name):
 
