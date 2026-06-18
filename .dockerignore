@@ -1,4 +1,4 @@
-# Keep build context small; mount models at runtime (see Dockerfile).
+# Keep build context small.
 .git/
 .gitignore
 .venv/
@@ -6,11 +6,14 @@ bin/
 cover.out
 *.out
 
-# Large ONNX weights (~1GB TimesFM, ~457MB Chronos) — mount with:
-#   docker run -v "$(pwd)/models:/models:ro" ...
+# Large ONNX weights — only chronos-2 model.onnx is baked into the manager image.
+# Download first: make download-chronos-onnx
 models/
+!models/chronos-2-onnx/
+models/chronos-2-onnx/**
+!models/chronos-2-onnx/model.onnx
 
-# Hugging Face download cache (if models/ is included in a baked build)
+# Hugging Face download cache
 **/.cache/
 
 # Dev artifacts not needed for the manager image
@@ -22,3 +25,4 @@ PROJECT
 README.md
 Dockerfile.cross
 config/
+charts/

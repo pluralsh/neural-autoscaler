@@ -1,0 +1,7 @@
+apiVersion: v2
+name: neural-autoscaler
+description: Kubernetes operator for ML-driven pod resource autoscaling with ONNX forecasting
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/pluralsh/neural-autoscaler

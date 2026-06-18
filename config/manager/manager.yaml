@@ -70,14 +70,11 @@ spec:
         - /manager
         args:
         - --leader-elect
-        - --model-path=/models/timesfm/onnx/model.onnx
-        - --timesfm-max-context=1024
         image: controller:latest
         name: manager
-        volumeMounts:
-        - name: timesfm-model
-          mountPath: /models/timesfm
-          readOnly: true
+        env:
+        - name: MODEL_PATH
+          value: /models/chronos-2-onnx/model.onnx
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -104,8 +101,5 @@ spec:
           requests:
             cpu: 500m
             memory: 2Gi
-      volumes:
-      - name: timesfm-model
-        emptyDir: {}
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

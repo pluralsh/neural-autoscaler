@@ -1,0 +1,30 @@
+{{- if .Values.sample.enabled }}
+apiVersion: autoscaling.plural.sh/v1alpha1
+kind: NeuralAutoscaler
+metadata:
+  name: {{ include "neural-autoscaler.fullname" . }}-sample
+  labels:
+    {{- include "neural-autoscaler.labels" . | nindent 4 }}
+spec:
+  metrics:
+    type: MetricsServer
+    metricsServer:
+      targetRef:
+        kind: Deployment
+        name: api
+      resources:
+        - cpu
+        - memory
+  forecast:
+    horizon: 12
+    step: 1m
+  resize:
+    minChangePercent: 5
+    resources:
+      cpu:
+        min: 100m
+        max: "8"
+      memory:
+        min: 128Mi
+        max: 16Gi
+{{- end }}

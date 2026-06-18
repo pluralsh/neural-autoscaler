@@ -1,0 +1,47 @@
+Neural Autoscaler has been installed.
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+The NeuralAutoscaler CRD is installed from charts/neural-autoscaler/crds/ on first
+helm install. Helm does not upgrade CRDs on subsequent releases; apply CRD changes
+with:
+
+  kubectl apply -f charts/neural-autoscaler/crds/
+
+Verify the controller:
+
+  kubectl -n {{ .Release.Namespace }} get deploy,pods,svc
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "neural-autoscaler.fullname" . }}-controller-manager
+
+Create a NeuralAutoscaler (adjust target workload name):
+
+  apiVersion: autoscaling.plural.sh/v1alpha1
+  kind: NeuralAutoscaler
+  metadata:
+    name: my-workload
+    namespace: {{ .Release.Namespace }}
+  spec:
+    metrics:
+      type: MetricsServer
+      metricsServer:
+        targetRef:
+          kind: Deployment
+          name: api
+        resources:
+          - cpu
+          - memory
+    forecast:
+      horizon: 12
+      step: 1m
+    resize:
+      minChangePercent: 5
+      resources:
+        cpu:
+          min: 100m
+          max: "8"
+        memory:
+          min: 128Mi
+          max: 16Gi
+
+Or enable the bundled sample with: --set sample.enabled=true

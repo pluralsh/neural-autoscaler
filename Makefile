@@ -48,6 +48,12 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(MAKE) chart-crds
+
+.PHONY: chart-crds
+chart-crds: ## Copy generated CRDs into the Helm chart.
+	mkdir -p charts/neural-autoscaler/crds
+	cp config/crd/bases/*.yaml charts/neural-autoscaler/crds/
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -119,8 +125,12 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build manager Docker image (ONNX Runtime + controller).
-	$(CONTAINER_TOOL) build --target manager -t $(IMG) .
+docker-build: ## Build manager Docker image (ONNX Runtime + Chronos-2 model). Requires: make download-chronos-onnx
+	@test -f models/chronos-2-onnx/model.onnx || { \
+		echo "models/chronos-2-onnx/model.onnx not found. Run: make download-chronos-onnx"; \
+		exit 1; \
+	}
+	$(CONTAINER_TOOL) build -t $(IMG) .
 
 .PHONY: docker-push
 docker-push: ## Push manager docker image.
@@ -142,6 +152,43 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm project-v3-builder
 	rm Dockerfile.cross
+
+##@ Release
+
+HELM ?= helm
+CHART_DIR ?= charts/neural-autoscaler
+CHART_YAML ?= $(CHART_DIR)/Chart.yaml
+DIST_DIR ?= dist
+
+.PHONY: helm-package
+helm-package: chart-crds ## Package the Helm chart into dist/.
+	mkdir -p $(DIST_DIR)
+	$(HELM) package $(CHART_DIR) --destination $(DIST_DIR)
+
+.PHONY: release
+release: chart-crds ## Bump chart version, commit, tag vX.Y.Z, and push (triggers CD image publish).
+	@LATEST_TAG=$$(git describe --tags `git rev-list --tags --max-count=1` --match="v*" 2>/dev/null) ;\
+	if [ $$? -ne 0 ]; then \
+		echo Could not find latest tag ;\
+	else \
+		echo Latest tag: $${LATEST_TAG} ;\
+	fi ;\
+	read -p "Version (without v prefix, e.g. 0.2.0): " version ;\
+	if ! echo "$$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$$'; then \
+		echo "Version must be semver (e.g. 0.2.0)" >&2 ;\
+		exit 1 ;\
+	fi ;\
+	tag=v$$version ;\
+	git checkout main ;\
+	git pull --rebase ;\
+	sed -i 's/^version:.*/version: '$$version'/' $(CHART_YAML) ;\
+	sed -i 's/^appVersion:.*/appVersion: "'$$version'"/' $(CHART_YAML) ;\
+	git add $(CHART_YAML) ;\
+	git commit -m "Release $$tag" ;\
+	git tag -a $$tag -m "release $$tag" ;\
+	git push origin main ;\
+	git push origin $$tag ;\
+	echo "Pushed $$tag. CD will build and publish pluralsh/neural-autoscaler:$$version"
 
 ##@ Deployment
 

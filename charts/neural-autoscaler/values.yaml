@@ -1,0 +1,49 @@
+nameOverride: ""
+fullnameOverride: neural-autoscaler
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/pluralsh/neural-autoscaler
+  pullPolicy: IfNotPresent
+  tag: ""
+
+leaderElect: true
+
+# Optional overrides for the bundled Chronos-2 ONNX model in the image.
+# Leave empty to use the image default (MODEL_PATH=/models/chronos-2-onnx/model.onnx).
+modelPath: ""
+modelFamily: ""
+
+resources:
+  limits:
+    cpu: "2"
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 2Gi
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+metrics:
+  enabled: true
+  port: 8080
+
+securityContext:
+  runAsNonRoot: true
+
+manager:
+  args: []
+  extraEnv: []
+
+imagePullSecrets: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+sample:
+  enabled: false

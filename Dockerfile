@@ -1,25 +1,21 @@
-# Manager image: Kubernetes controller with bundled ONNX Runtime for optional ML forecasting.
+# Manager image: Kubernetes controller with bundled ONNX Runtime and Chronos-2 ONNX model.
+#
+# Prerequisites:
+#   make download-chronos-onnx   # downloads models/chronos-2-onnx/model.onnx (~457MB)
 #
 # Build:
-#   docker build -t controller:latest .
 #   make docker-build
+#   docker build -t controller:latest .
 #
-# Run locally (requires kubeconfig; mount models for ML forecasting):
+# Run locally (requires kubeconfig):
 #   docker run --rm \
 #     -v "$HOME/.kube/config:/etc/kubeconfig:ro" \
-#     -v "$(pwd)/models:/models:ro" \
 #     -e KUBECONFIG=/etc/kubeconfig \
-#     -e MODEL_PATH=/models/timesfm-2.5-onnx/onnx/model.onnx \
 #     controller:latest \
-#     --leader-elect \
-#     --model-path=/models/timesfm-2.5-onnx/onnx/model.onnx
-#
-# Bake models into the image (optional):
-#   1. Remove `models/` from .dockerignore
-#   2. docker build --target manager-baked -t controller:baked .
+#     --leader-elect
 #
 # Environment (forecast flags also accept CLI equivalents):
-#   MODEL_PATH                Path to model.onnx
+#   MODEL_PATH                Path to model.onnx (default: /models/chronos-2-onnx/model.onnx)
 #   FORECAST_MODEL_FAMILY     timesfm | chronos2 (optional; auto-discovered when unset)
 #   ONNX_RUNTIME_LIB_PATH     libonnxruntime.so (default: /opt/onnxruntime/lib/libonnxruntime.so)
 #   ONNX_RUNTIME_API_VERSION  ORT C API version for purego (default: 23)
@@ -67,14 +63,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=ort /opt/onnxruntime/lib/ /opt/onnxruntime/lib/
 COPY --from=builder /out/manager /manager
+COPY models/chronos-2-onnx/model.onnx /models/chronos-2-onnx/model.onnx
 
 ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib \
     ONNX_RUNTIME_LIB_PATH=/opt/onnxruntime/lib/libonnxruntime.so \
     ONNX_RUNTIME_API_VERSION=23 \
-    MODEL_PATH=
+    MODEL_PATH=/models/chronos-2-onnx/model.onnx
 
 ENTRYPOINT ["/manager"]
 CMD ["--leader-elect"]
-
-FROM manager AS manager-baked
-COPY models/ /models/

@@ -1,0 +1,332 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: neuralautoscalers.autoscaling.plural.sh
+spec:
+  group: autoscaling.plural.sh
+  names:
+    kind: NeuralAutoscaler
+    listKind: NeuralAutoscalerList
+    plural: neuralautoscalers
+    singular: neuralautoscaler
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.metrics.type
+      name: Source
+      type: string
+    - jsonPath: .status.lastMetricsCount
+      name: Samples
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: NeuralAutoscaler is the Schema for the neuralautoscalers API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: NeuralAutoscalerSpec defines the desired state of NeuralAutoscaler.
+            properties:
+              forecast:
+                description: Forecast optionally enables ONNX forecasting when the
+                  operator is started with a model.
+                properties:
+                  horizon:
+                    description: Horizon is the number of future steps to predict.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  step:
+                    description: |-
+                      Step is the interval between forecasted points.
+                      Defaults to 1m when unset.
+                    type: string
+                type: object
+              metrics:
+                description: Metrics configures where workload metrics are fetched
+                  from.
+                properties:
+                  metricsServer:
+                    description: MetricsServer fetches current pod resource usage
+                      from the Kubernetes metrics API.
+                    properties:
+                      namespace:
+                        description: |-
+                          Namespace overrides the NeuralAutoscaler namespace for target resolution and pod metrics reads.
+                          Defaults to the NeuralAutoscaler object namespace when unset.
+                        type: string
+                      resources:
+                        description: Resources lists container resources to aggregate
+                          across matching pods.
+                        items:
+                          description: ResourceMetric is a well-known container resource
+                            metric exposed by metrics-server.
+                          enum:
+                          - cpu
+                          - memory
+                          type: string
+                        minItems: 1
+                        type: array
+                      targetRef:
+                        description: TargetRef identifies the scaled workload (Deployment,
+                          StatefulSet, ReplicaSet, or Pod).
+                        properties:
+                          apiGroup:
+                            description: APIGroup of the referent. Defaults to "apps"
+                              for Deployments and StatefulSets.
+                            type: string
+                          kind:
+                            description: Kind of the referent.
+                            enum:
+                            - Deployment
+                            - StatefulSet
+                            - ReplicaSet
+                            - Pod
+                            type: string
+                          name:
+                            description: Name of the referent.
+                            minLength: 1
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
+                    required:
+                    - resources
+                    - targetRef
+                    type: object
+                  prometheus:
+                    description: Prometheus executes a PromQL query against a Prometheus-compatible
+                      HTTP API.
+                    properties:
+                      auth:
+                        description: Auth optionally supplies credentials from a Secret
+                          in the same namespace as the NeuralAutoscaler.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      lookback:
+                        description: |-
+                          Lookback limits how far back query_range reads historical samples.
+                          Defaults to 1h when queryType is query_range.
+                        type: string
+                      query:
+                        description: Query is the PromQL expression to execute.
+                        minLength: 1
+                        type: string
+                      queryType:
+                        description: |-
+                          QueryType selects /api/v1/query (instant) or /api/v1/query_range (range).
+                          Defaults to query_range.
+                        enum:
+                        - query
+                        - query_range
+                        type: string
+                      step:
+                        description: |-
+                          Step is the range query resolution width.
+                          Defaults to 1m when queryType is query_range.
+                        type: string
+                      url:
+                        description: URL is the Prometheus server base URL, for example
+                          "http://prometheus.monitoring:9090".
+                        minLength: 1
+                        type: string
+                    required:
+                    - query
+                    - url
+                    type: object
+                  type:
+                    description: Type selects the metrics backend.
+                    enum:
+                    - MetricsServer
+                    - Prometheus
+                    type: string
+                required:
+                - type
+                type: object
+                x-kubernetes-validations:
+                - message: metricsServer is required when type is MetricsServer
+                  rule: self.type != 'MetricsServer' || has(self.metricsServer)
+                - message: prometheus is required when type is Prometheus
+                  rule: self.type != 'Prometheus' || has(self.prometheus)
+              resize:
+                description: Resize optionally enables in-place pod resource resizing
+                  after a forecast is available.
+                properties:
+                  minChangePercent:
+                    description: |-
+                      MinChangePercent is the minimum relative change required before a resource
+                      request is updated in place. Compares |new-old|/old*100; when old is zero,
+                      any positive new value counts as a change. Defaults to 10 when unset.
+                    format: int32
+                    maximum: 100
+                    minimum: 0
+                    type: integer
+                  resources:
+                    additionalProperties:
+                      description: ResourceBoundsSpec defines optional min/max quantity
+                        bounds for a resize target resource.
+                      properties:
+                        max:
+                          description: Max is the maximum allowed quantity, for example
+                            "8" or "16Gi".
+                          type: string
+                        min:
+                          description: Min is the minimum allowed quantity, for example
+                            "250m" or "512Mi".
+                          type: string
+                        minChangePercent:
+                          description: MinChangePercent overrides resize.minChangePercent
+                            for this resource.
+                          format: int32
+                          maximum: 100
+                          minimum: 0
+                          type: integer
+                      type: object
+                    description: Resources defines per-resource resize bounds. Keys
+                      must be cpu and/or memory.
+                    minProperties: 1
+                    type: object
+                required:
+                - resources
+                type: object
+            required:
+            - metrics
+            type: object
+          status:
+            description: NeuralAutoscalerStatus defines the observed state of NeuralAutoscaler.
+            properties:
+              conditions:
+                description: Conditions represent the current state of the NeuralAutoscaler
+                  resource.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastFetchTime:
+                description: LastFetchTime is when metrics were last fetched successfully.
+                format: date-time
+                type: string
+              lastForecast:
+                description: LastForecast summarizes the most recent forecast, when
+                  forecasting is enabled.
+                properties:
+                  horizon:
+                    description: Horizon is the number of predicted points returned.
+                    format: int32
+                    type: integer
+                  modelVersion:
+                    description: ModelVersion identifies the ONNX model used for the
+                      forecast.
+                    type: string
+                type: object
+              lastMetricsCount:
+                description: LastMetricsCount is the number of samples in the longest
+                  buffered history series.
+                format: int32
+                type: integer
+              lastResourceValues:
+                additionalProperties:
+                  type: string
+                description: LastResourceValues maps resource name to the most recent
+                  fetched sample value.
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
