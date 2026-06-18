@@ -6,7 +6,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/pluralsh/neural-autoscaler
   pullPolicy: IfNotPresent
-  tag: ""
+  tag: "0.2.0"
 
 leaderElect: true
 
