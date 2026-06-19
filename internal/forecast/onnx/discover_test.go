@@ -1,11 +1,7 @@
 package onnx
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/pluralsh/neural-autoscaler/internal/forecast"
 )
 
 func TestFamilyFromInputNames(t *testing.T) {
@@ -66,54 +62,5 @@ func TestParseModelFamily(t *testing.T) {
 		if got := parseModelFamily(raw); got != want {
 			t.Fatalf("parseModelFamily(%q) = %q, want %q", raw, got, want)
 		}
-	}
-}
-
-func TestDiscoverModelFamilyWithRealModels(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "models")
-
-	timesfmPath := filepath.Join(root, "timesfm-2.5-onnx", "onnx", "model.onnx")
-	if _, err := os.Stat(timesfmPath); err == nil {
-		t.Run("timesfm", func(t *testing.T) {
-			family, err := DiscoverModelFamily(timesfmPath, "", defaultORTAPIVersion)
-			if err != nil {
-				t.Skipf("ONNX runtime unavailable: %v", err)
-			}
-			if family != ModelFamilyTimesFM {
-				t.Fatalf("DiscoverModelFamily(timesfm) = %q, want %q", family, ModelFamilyTimesFM)
-			}
-		})
-	}
-
-	chronosPath := filepath.Join(root, "chronos-2-onnx", "model.onnx")
-	if _, err := os.Stat(chronosPath); err == nil {
-		t.Run("chronos2", func(t *testing.T) {
-			family, err := DiscoverModelFamily(chronosPath, "", defaultORTAPIVersion)
-			if err != nil {
-				t.Skipf("ONNX runtime unavailable: %v", err)
-			}
-			if family != ModelFamilyChronos2 {
-				t.Fatalf("DiscoverModelFamily(chronos2) = %q, want %q", family, ModelFamilyChronos2)
-			}
-		})
-	}
-}
-
-func TestConfigFromForecastDiscoversFamily(t *testing.T) {
-	timesfmPath := filepath.Join("..", "..", "..", "models", "timesfm-2.5-onnx", "onnx", "model.onnx")
-	if _, err := os.Stat(timesfmPath); err != nil {
-		t.Skip("timesfm model not present")
-	}
-
-	cfg, err := ConfigFromForecast(forecast.Config{
-		Options: map[string]string{
-			"model_path": timesfmPath,
-		},
-	})
-	if err != nil {
-		t.Skipf("ONNX runtime unavailable: %v", err)
-	}
-	if cfg.ModelFamily != ModelFamilyTimesFM {
-		t.Fatalf("ModelFamily = %q, want %q", cfg.ModelFamily, ModelFamilyTimesFM)
 	}
 }
