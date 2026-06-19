@@ -16,7 +16,7 @@ type Series struct {
 // FetchResult holds per-resource series and resolved target pods from a metrics fetch.
 type FetchResult struct {
 	ByResource map[autoscalingv1alpha1.ResourceMetric]Series
-	// PodNames lists pods resolved from metrics.metricsServer.targetRef.
+	// PodNames lists pods resolved from metrics targetRef.
 	PodNames []string
 }
 

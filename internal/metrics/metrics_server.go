@@ -5,17 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	autoscalingv1alpha1 "github.com/pluralsh/neural-autoscaler/api/v1alpha1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"github.com/pluralsh/neural-autoscaler/internal/log"
 )
 
 type metricsServerFetcher struct {
@@ -37,7 +33,7 @@ func newMetricsServerFetcher(factory *Factory, spec autoscalingv1alpha1.MetricsS
 }
 
 func (f *metricsServerFetcher) Fetch(ctx context.Context) (FetchResult, error) {
-	podNames, err := f.resolvePodNames(ctx)
+	podNames, err := ResolvePodNames(ctx, f.factory.K8sClient, f.namespace, f.spec.TargetRef)
 	if err != nil {
 		return FetchResult{}, err
 	}
@@ -78,7 +74,9 @@ func (f *metricsServerFetcher) Fetch(ctx context.Context) (FetchResult, error) {
 		matched++
 	}
 	if matched == 0 {
-		return FetchResult{}, fmt.Errorf("metrics-server returned no pod metrics for %d target pods", len(podNames))
+		err := fmt.Errorf("metrics-server returned no pod metrics for %d target pods", len(podNames))
+		log.Error(err, "metrics-server fetch failed", "namespace", f.namespace, "targetPods", len(podNames))
+		return FetchResult{}, err
 	}
 
 	now := f.factory.now()
@@ -92,70 +90,8 @@ func (f *metricsServerFetcher) Fetch(ctx context.Context) (FetchResult, error) {
 			Timestamps: []time.Time{now},
 		}
 	}
+	log.Debug("fetched metrics-server pod metrics", "namespace", f.namespace, "targetPods", len(podNames), "matchedPods", matched)
 	return out, nil
-}
-
-func (f *metricsServerFetcher) resolvePodNames(ctx context.Context) ([]string, error) {
-	ref := f.spec.TargetRef
-	switch ref.Kind {
-	case "Pod":
-		key := types.NamespacedName{Namespace: f.namespace, Name: ref.Name}
-		pod := &corev1.Pod{}
-		if err := f.factory.K8sClient.Get(ctx, key, pod); err != nil {
-			return nil, fmt.Errorf("get pod %q: %w", key, err)
-		}
-		return []string{ref.Name}, nil
-	case "Deployment":
-		return f.podNamesForSelector(ctx, func(ctx context.Context, key types.NamespacedName) (labels.Selector, error) {
-			dep := &appsv1.Deployment{}
-			if err := f.factory.K8sClient.Get(ctx, key, dep); err != nil {
-				return nil, err
-			}
-			return metav1.LabelSelectorAsSelector(dep.Spec.Selector)
-		})
-	case "StatefulSet":
-		return f.podNamesForSelector(ctx, func(ctx context.Context, key types.NamespacedName) (labels.Selector, error) {
-			sts := &appsv1.StatefulSet{}
-			if err := f.factory.K8sClient.Get(ctx, key, sts); err != nil {
-				return nil, err
-			}
-			return metav1.LabelSelectorAsSelector(sts.Spec.Selector)
-		})
-	case "ReplicaSet":
-		return f.podNamesForSelector(ctx, func(ctx context.Context, key types.NamespacedName) (labels.Selector, error) {
-			rs := &appsv1.ReplicaSet{}
-			if err := f.factory.K8sClient.Get(ctx, key, rs); err != nil {
-				return nil, err
-			}
-			return metav1.LabelSelectorAsSelector(rs.Spec.Selector)
-		})
-	default:
-		return nil, fmt.Errorf("unsupported targetRef kind %q", ref.Kind)
-	}
-}
-
-type selectorResolver func(ctx context.Context, key types.NamespacedName) (labels.Selector, error)
-
-func (f *metricsServerFetcher) podNamesForSelector(ctx context.Context, resolve selectorResolver) ([]string, error) {
-	key := types.NamespacedName{Namespace: f.namespace, Name: f.spec.TargetRef.Name}
-	selector, err := resolve(ctx, key)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, fmt.Errorf("get target %s %q: %w", f.spec.TargetRef.Kind, key, err)
-		}
-		return nil, fmt.Errorf("resolve selector for %s %q: %w", f.spec.TargetRef.Kind, key, err)
-	}
-
-	podList := &corev1.PodList{}
-	if err := f.factory.K8sClient.List(ctx, podList, client.InNamespace(f.namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-		return nil, fmt.Errorf("list pods for %s %q: %w", f.spec.TargetRef.Kind, key, err)
-	}
-
-	names := make([]string, 0, len(podList.Items))
-	for _, pod := range podList.Items {
-		names = append(names, pod.Name)
-	}
-	return names, nil
 }
 
 // HistoryKey returns the per-resource history buffer key for a NeuralAutoscaler.

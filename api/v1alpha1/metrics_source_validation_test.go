@@ -66,17 +66,45 @@ func TestValidateMetricsSource(t *testing.T) {
 			spec: MetricsSourceSpec{
 				Type: MetricsSourcePrometheus,
 				Prometheus: &PrometheusSourceSpec{
+					URL: "http://prometheus:9090",
+					TargetRef: &CrossVersionObjectReference{
+						Kind: "Deployment",
+						Name: "api",
+					},
+					Resources: []ResourceMetric{ResourceMetricCPU, ResourceMetricMemory},
+				},
+			},
+		},
+		{
+			name: "prometheus legacy query mode",
+			spec: MetricsSourceSpec{
+				Type: MetricsSourcePrometheus,
+				Prometheus: &PrometheusSourceSpec{
 					URL:   "http://prometheus:9090",
 					Query: `sum(rate(container_cpu_usage_seconds_total{namespace="default"}[5m]))`,
 				},
 			},
 		},
 		{
-			name: "prometheus missing query",
+			name: "prometheus missing targetRef and query",
 			spec: MetricsSourceSpec{
 				Type: MetricsSourcePrometheus,
 				Prometheus: &PrometheusSourceSpec{
 					URL: "http://prometheus:9090",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "prometheus targetRef missing resources",
+			spec: MetricsSourceSpec{
+				Type: MetricsSourcePrometheus,
+				Prometheus: &PrometheusSourceSpec{
+					URL: "http://prometheus:9090",
+					TargetRef: &CrossVersionObjectReference{
+						Kind: "Deployment",
+						Name: "api",
+					},
 				},
 			},
 			wantErr: true,
@@ -139,8 +167,12 @@ func TestPrometheusDefaultsAreOptional(t *testing.T) {
 	t.Parallel()
 
 	spec := PrometheusSourceSpec{
-		URL:   "http://prometheus:9090",
-		Query: "up",
+		URL: "http://prometheus:9090",
+		TargetRef: &CrossVersionObjectReference{
+			Kind: "Deployment",
+			Name: "api",
+		},
+		Resources: []ResourceMetric{ResourceMetricCPU},
 	}
 	if err := validatePrometheusSource(spec); err != nil {
 		t.Fatalf("validatePrometheusSource() error = %v", err)

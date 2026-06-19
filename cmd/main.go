@@ -20,6 +20,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -38,14 +39,12 @@ import (
 	"github.com/pluralsh/neural-autoscaler/internal/controller"
 	"github.com/pluralsh/neural-autoscaler/internal/forecast"
 	"github.com/pluralsh/neural-autoscaler/internal/forecast/onnx"
+	"github.com/pluralsh/neural-autoscaler/internal/log"
 	"github.com/pluralsh/neural-autoscaler/internal/metrics"
 	//+kubebuilder:scaffold:imports
 )
 
-var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
-)
+var scheme = runtime.NewScheme()
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
@@ -61,20 +60,20 @@ func main() {
 	if args.ForecastEnabled() {
 		onnxCfg, err := onnx.ConfigFromForecast(forecast.Config{Options: args.ForecastOptions()})
 		if err != nil {
-			setupLog.Error(err, "unable to load ONNX forecast model")
+			log.Error(err, "unable to load ONNX forecast model")
 			os.Exit(1)
 		}
 		forecaster, err = onnx.NewFromConfig(onnxCfg)
 		if err != nil {
-			setupLog.Error(err, "unable to load ONNX forecast model")
+			log.Error(err, "unable to load ONNX forecast model")
 			os.Exit(1)
 		}
 		defer func() {
 			if err := forecaster.Close(); err != nil {
-				setupLog.Error(err, "unable to close ONNX forecast model")
+				log.Error(err, "unable to close ONNX forecast model")
 			}
 		}()
-		setupLog.Info("loaded ONNX forecast model", "family", onnxCfg.ModelFamily, "path", onnxCfg.ModelPath)
+		log.Info("loaded ONNX forecast model", "family", onnxCfg.ModelFamily, "path", onnxCfg.ModelPath)
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -96,13 +95,13 @@ func main() {
 		// LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
-		setupLog.Error(err, "unable to start manager")
+		log.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
 	metricsClient, err := metricsclientset.NewForConfig(mgr.GetConfig())
 	if err != nil {
-		setupLog.Error(err, "unable to create metrics-server client")
+		log.Error(err, "unable to create metrics-server client")
 		os.Exit(1)
 	}
 
@@ -110,6 +109,7 @@ func main() {
 		K8sClient:     mgr.GetClient(),
 		MetricsClient: metrics.NewMetricsClientAdapter(metricsClient),
 		History:       metrics.NewHistoryStore(metrics.DefaultHistoryCapacity),
+		HTTPClient:    &http.Client{Timeout: 30 * time.Second},
 	}
 
 	if err = (&controller.NeuralAutoscalerReconciler{
@@ -118,17 +118,17 @@ func main() {
 		Forecaster:     forecaster,
 		MetricsFactory: metricsFactory,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "NeuralAutoscaler")
+		log.Error(err, "unable to create controller", "controller", "NeuralAutoscaler")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
+		log.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
+		log.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
 	if forecaster != nil {
@@ -136,15 +136,15 @@ func main() {
 			if err := mgr.AddReadyzCheck("forecaster", func(_ *http.Request) error {
 				return checker.Ready(context.Background())
 			}); err != nil {
-				setupLog.Error(err, "unable to set up forecaster ready check")
+				log.Error(err, "unable to set up forecaster ready check")
 				os.Exit(1)
 			}
 		}
 	}
 
-	setupLog.Info("starting manager")
+	log.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
+		log.Error(err, "problem running manager")
 		os.Exit(1)
 	}
 }

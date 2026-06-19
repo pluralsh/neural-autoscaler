@@ -151,9 +151,15 @@ spec:
                           Lookback limits how far back query_range reads historical samples.
                           Defaults to 1h when queryType is query_range.
                         type: string
+                      namespace:
+                        description: |-
+                          Namespace overrides the NeuralAutoscaler namespace for target resolution and PromQL filters.
+                          Defaults to the NeuralAutoscaler object namespace when unset.
+                        type: string
                       query:
-                        description: Query is the PromQL expression to execute.
-                        minLength: 1
+                        description: |-
+                          Query is an optional PromQL expression override. When unset, queries are built from
+                          targetRef and resources. When set without targetRef, legacy single-query mode is used.
                         type: string
                       queryType:
                         description: |-
@@ -163,18 +169,54 @@ spec:
                         - query
                         - query_range
                         type: string
+                      resources:
+                        description: |-
+                          Resources lists container resources to aggregate across matching pods.
+                          Required when targetRef is set.
+                        items:
+                          description: ResourceMetric is a well-known container resource
+                            metric exposed by metrics-server.
+                          enum:
+                          - cpu
+                          - memory
+                          type: string
+                        type: array
                       step:
                         description: |-
                           Step is the range query resolution width.
                           Defaults to 1m when queryType is query_range.
                         type: string
+                      targetRef:
+                        description: |-
+                          TargetRef identifies the scaled workload (Deployment, StatefulSet, ReplicaSet, or Pod).
+                          Required unless query is set for legacy single-query mode.
+                        properties:
+                          apiGroup:
+                            description: APIGroup of the referent. Defaults to "apps"
+                              for Deployments and StatefulSets.
+                            type: string
+                          kind:
+                            description: Kind of the referent.
+                            enum:
+                            - Deployment
+                            - StatefulSet
+                            - ReplicaSet
+                            - Pod
+                            type: string
+                          name:
+                            description: Name of the referent.
+                            minLength: 1
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       url:
                         description: URL is the Prometheus server base URL, for example
                           "http://prometheus.monitoring:9090".
                         minLength: 1
                         type: string
                     required:
-                    - query
                     - url
                     type: object
                   type:

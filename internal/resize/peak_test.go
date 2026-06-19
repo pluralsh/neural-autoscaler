@@ -27,3 +27,22 @@ func TestEffectivePeak(t *testing.T) {
 		t.Fatalf("EffectivePeak() = %v, want 3000", got)
 	}
 }
+
+func TestRecentPeakPreservesBurstOverSmoothedRange(t *testing.T) {
+	t.Parallel()
+
+	reconcileSamples := burstyCPUSeriesFixture()
+	smoothedRange := make([]float64, 0, 9)
+	for i := 0; i < 9; i++ {
+		smoothedRange = append(smoothedRange, 200+float64(i)*50)
+	}
+
+	reconcilePeak := RecentPeak(reconcileSamples, DefaultRecentPeakWindow)
+	rangePeak := RecentPeak(smoothedRange, DefaultRecentPeakWindow)
+	if reconcilePeak <= rangePeak {
+		t.Fatalf("reconcile peak %v should exceed smoothed range peak %v", reconcilePeak, rangePeak)
+	}
+	if reconcilePeak != 2000 {
+		t.Fatalf("reconcile peak = %v, want 2000", reconcilePeak)
+	}
+}
