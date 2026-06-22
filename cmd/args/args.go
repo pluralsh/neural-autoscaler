@@ -5,8 +5,8 @@ import (
 	"os"
 	"strconv"
 
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 const (
@@ -39,14 +39,17 @@ var (
 		"ONNX Runtime API version used by onnxruntime-purego (23).")
 )
 
+// Init parses flags and wires klog into controller-runtime.
+// Logging verbosity is controlled by the standard klog -v flag:
+//   - -v=0 (default): Info, Warning, and Error
+//   - -v=4: adds Debug (Prometheus queries, forecast details, per-pod skips)
 func Init() {
-	opts := zap.Options{Development: true}
-	opts.BindFlags(flag.CommandLine)
+	klog.InitFlags(flag.CommandLine)
 	flag.Parse()
 
 	resolveEnvFallbacks()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	ctrl.SetLogger(klog.NewKlogr())
 }
 
 func resolveEnvFallbacks() {

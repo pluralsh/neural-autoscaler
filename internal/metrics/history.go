@@ -135,6 +135,27 @@ func (s *HistoryStore) Delete(key string) {
 	delete(s.buffers, key)
 }
 
+// AppendLatest adds the last sample from snapshot to the buffer for key.
+func (s *HistoryStore) AppendLatest(key string, snapshot Series) {
+	if len(snapshot.Values) == 0 {
+		return
+	}
+	ts := snapshot.Timestamps[len(snapshot.Timestamps)-1]
+	s.Append(key, snapshot.Values[len(snapshot.Values)-1], ts)
+}
+
+// RecentPeakSamples returns reconcile-interval accumulated samples when available,
+// otherwise the fetched series. Prometheus range queries are coarse; the buffer
+// preserves short bursts for RecentPeak resize floors.
+func RecentPeakSamples(store *HistoryStore, key string, fetched Series) []float64 {
+	if store != nil {
+		if s := store.Get(key); len(s.Values) > 0 {
+			return s.Values
+		}
+	}
+	return fetched.Values
+}
+
 // DeleteByPrefix removes all buffers whose keys start with prefix.
 func (s *HistoryStore) DeleteByPrefix(prefix string) {
 	s.mu.Lock()

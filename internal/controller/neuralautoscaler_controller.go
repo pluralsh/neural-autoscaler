@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -29,11 +30,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/pluralsh/neural-autoscaler/api/v1alpha1"
 	"github.com/pluralsh/neural-autoscaler/internal/forecast"
+	"github.com/pluralsh/neural-autoscaler/internal/log"
 	"github.com/pluralsh/neural-autoscaler/internal/metrics"
 	"github.com/pluralsh/neural-autoscaler/internal/resize"
 )
@@ -64,8 +65,10 @@ type NeuralAutoscalerReconciler struct {
 
 // Reconcile drives the predict→resize loop on each reconcile tick:
 //
-//  1. Fetch current usage from metrics-server for each configured resource and append
-//     the latest sample to an in-memory per-resource history buffer.
+//  1. Fetch workload metrics from the configured source (metrics-server or Prometheus).
+//     Metrics-server appends each latest sample to an in-memory per-resource history buffer.
+//     Prometheus uses its range series for forecasting and also appends the latest sample
+//     per reconcile so RecentPeak resize floors see burst spikes, not only 1m averages.
 //  2. When the buffer holds at least MinForecastSamples points, run the configured
 //     ONNX forecaster over that history to produce a future usage series.
 //  3. If spec.resize is set and forecasts are ready, derive per-pod container requests
@@ -74,12 +77,11 @@ type NeuralAutoscalerReconciler struct {
 //  4. Apply the new requests in place via the pods/resize subresource. Only requests
 //     are predicted; limits are raised only when they would fall below the new request.
 func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, reterr error) {
-	logger := log.FromContext(ctx)
-
 	na := &v1alpha1.NeuralAutoscaler{}
 	if err := r.Get(ctx, req.NamespacedName, na); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	naKey := client.ObjectKeyFromObject(na)
 
 	if !na.DeletionTimestamp.IsZero() {
 		r.evictHistory(na.Namespace, na.Name)
@@ -88,7 +90,7 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	scope, err := NewDefaultScope(ctx, r.Client, na)
 	if err != nil {
-		logger.Error(err, "failed to create reconciliation scope")
+		log.Error(err, "failed to create reconciliation scope", "neuralAutoscaler", naKey)
 		return ctrl.Result{}, err
 	}
 	defer func() {
@@ -97,28 +99,22 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}()
 
-	if na.Spec.Metrics.Type != v1alpha1.MetricsSourceMetricsServer {
-		logger.Info("unsupported metrics source", "type", na.Spec.Metrics.Type)
-		setMetricsReadyCondition(na, metav1.ConditionFalse, "UnsupportedMetricsSource", "only MetricsServer is implemented")
-		return ctrl.Result{RequeueAfter: defaultRequeueInterval}, nil
-	}
-
 	if r.MetricsFactory == nil {
-		logger.Info("metrics factory not configured; skipping metrics fetch")
+		log.Info("metrics factory not configured; skipping metrics fetch", "neuralAutoscaler", naKey)
 		setMetricsReadyCondition(na, metav1.ConditionFalse, "MetricsFactoryMissing", "metrics factory is not configured")
 		return ctrl.Result{RequeueAfter: defaultRequeueInterval}, nil
 	}
 
 	fetcher, err := r.MetricsFactory.NewFetcher(na.Spec.Metrics, na.Namespace)
 	if err != nil {
-		logger.Error(err, "invalid metrics source configuration")
+		log.Error(err, "invalid metrics source configuration", "neuralAutoscaler", naKey)
 		setMetricsReadyCondition(na, metav1.ConditionFalse, "InvalidMetricsSource", err.Error())
 		return ctrl.Result{}, err
 	}
 
 	fetchResult, err := fetcher.Fetch(ctx)
 	if err != nil {
-		logger.Error(err, "failed to fetch metrics", "source", na.Spec.Metrics.Type)
+		log.Error(err, "failed to fetch metrics", "neuralAutoscaler", naKey, "source", na.Spec.Metrics.Type)
 		setMetricsReadyCondition(na, metav1.ConditionFalse, "MetricsFetchFailed", err.Error())
 		return ctrl.Result{}, err
 	}
@@ -135,18 +131,28 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	forecasts := make(map[v1alpha1.ResourceMetric]forecast.Response)
-	historyByResource := make(map[v1alpha1.ResourceMetric]metrics.Series, len(na.Spec.Metrics.MetricsServer.Resources))
-	for _, resource := range na.Spec.Metrics.MetricsServer.Resources {
-		series := fetchResult.ByResource[resource]
+	historyByResource := make(map[v1alpha1.ResourceMetric]metrics.Series)
+	for _, resource := range resourcesToProcess(na, fetchResult) {
+		series, ok := fetchResult.ByResource[resource]
+		if !ok {
+			continue
+		}
 		key := metrics.HistoryKey(na.Namespace, na.Name, resource)
-		forecastSeries := r.accumulateMetricsServerHistory(key, series)
+		var forecastSeries metrics.Series
+		if na.Spec.Metrics.Type == v1alpha1.MetricsSourceMetricsServer {
+			forecastSeries = r.accumulateHistory(key, series)
+		} else {
+			forecastSeries = series
+			r.appendHistorySample(key, series)
+		}
 		historyByResource[resource] = forecastSeries
 		if count := int32(len(forecastSeries.Values)); count > maxSamples {
 			maxSamples = count
 		}
 		if r.Forecaster != nil && na.Spec.Forecast != nil {
 			if len(forecastSeries.Values) < metrics.MinForecastSamples {
-				logger.Info("insufficient history for forecast",
+				log.Warning("insufficient history for forecast",
+					"neuralAutoscaler", naKey,
 					"resource", resource,
 					"samples", len(forecastSeries.Values),
 					"minimum", metrics.MinForecastSamples)
@@ -154,7 +160,7 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 			resp, err := r.runForecast(ctx, na, resource, forecastSeries)
 			if err != nil {
-				logger.Error(err, "forecast failed", "resource", resource)
+				log.Error(err, "forecast failed", "neuralAutoscaler", naKey, "resource", resource)
 			} else {
 				forecasts[resource] = resp
 			}
@@ -163,20 +169,21 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	na.Status.LastMetricsCount = maxSamples
 
 	setMetricsReadyCondition(na, metav1.ConditionTrue, "MetricsFetched", fmt.Sprintf("fetched metrics for %d resource(s)", len(fetchResult.ByResource)))
-	logger.Info("fetched metrics", "source", na.Spec.Metrics.Type, "resources", len(fetchResult.ByResource), "maxSamples", na.Status.LastMetricsCount)
+	log.Info("fetched metrics", "neuralAutoscaler", naKey, "source", na.Spec.Metrics.Type, "resources", len(fetchResult.ByResource), "maxSamples", na.Status.LastMetricsCount)
 
 	if na.Spec.Resize != nil {
 		if len(forecasts) == 0 {
-			logger.Info("skipping resize: forecast not ready")
+			log.Warning("skipping resize: forecast not ready", "neuralAutoscaler", naKey)
 		} else {
 			targetNamespace := metricsTargetNamespace(na)
 			resizeReconciler := resize.Reconciler{Client: r.Client}
 			recentHistory := make(map[v1alpha1.ResourceMetric][]float64, len(historyByResource))
 			for resource, series := range historyByResource {
-				recentHistory[resource] = series.Values
+				key := metrics.HistoryKey(na.Namespace, na.Name, resource)
+				recentHistory[resource] = metrics.RecentPeakSamples(r.MetricsFactory.History, key, series)
 			}
 			if err := resizeReconciler.Apply(ctx, na, forecasts, recentHistory, fetchResult.PodNames, targetNamespace); err != nil {
-				logger.Error(err, "resize failed")
+				log.Error(err, "resize failed", "neuralAutoscaler", naKey)
 			}
 		}
 	}
@@ -184,13 +191,19 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{RequeueAfter: defaultRequeueInterval}, nil
 }
 
-func (r *NeuralAutoscalerReconciler) accumulateMetricsServerHistory(key string, snapshot metrics.Series) metrics.Series {
+func (r *NeuralAutoscalerReconciler) accumulateHistory(key string, snapshot metrics.Series) metrics.Series {
 	if r.MetricsFactory == nil || r.MetricsFactory.History == nil || len(snapshot.Values) == 0 {
 		return snapshot
 	}
-	ts := snapshot.Timestamps[len(snapshot.Timestamps)-1]
-	r.MetricsFactory.History.Append(key, snapshot.Values[len(snapshot.Values)-1], ts)
+	r.MetricsFactory.History.AppendLatest(key, snapshot)
 	return r.MetricsFactory.History.Get(key)
+}
+
+func (r *NeuralAutoscalerReconciler) appendHistorySample(key string, snapshot metrics.Series) {
+	if r.MetricsFactory == nil || r.MetricsFactory.History == nil {
+		return
+	}
+	r.MetricsFactory.History.AppendLatest(key, snapshot)
 }
 
 func (r *NeuralAutoscalerReconciler) evictHistory(namespace, name string) {
@@ -241,7 +254,6 @@ func (r *NeuralAutoscalerReconciler) runForecast(ctx context.Context, na *v1alph
 	unit := valueUnitForResource(resource)
 	target := describeMetricTarget(na.Spec.Metrics, resource)
 
-	logger := log.FromContext(ctx)
 	logArgs := []any{
 		"neuralAutoscaler", client.ObjectKeyFromObject(na),
 		"resource", resource,
@@ -254,23 +266,40 @@ func (r *NeuralAutoscalerReconciler) runForecast(ctx context.Context, na *v1alph
 	if len(resp.Quantiles) > 0 {
 		logArgs = append(logArgs, "quantiles", forecast.FormatQuantiles(step, resp.Quantiles, unit))
 	}
-	logger.Info("forecast completed", logArgs...)
+	log.Info("forecast completed", logArgs...)
 
 	return resp, nil
+}
+
+func resourcesToProcess(na *v1alpha1.NeuralAutoscaler, fetchResult metrics.FetchResult) []v1alpha1.ResourceMetric {
+	if na.Spec.Metrics.MetricsServer != nil {
+		return na.Spec.Metrics.MetricsServer.Resources
+	}
+	if na.Spec.Metrics.Prometheus != nil && len(na.Spec.Metrics.Prometheus.Resources) > 0 {
+		return na.Spec.Metrics.Prometheus.Resources
+	}
+
+	resources := make([]v1alpha1.ResourceMetric, 0, len(fetchResult.ByResource))
+	for resource := range fetchResult.ByResource {
+		resources = append(resources, resource)
+	}
+	sort.Slice(resources, func(i, j int) bool {
+		return resources[i] < resources[j]
+	})
+	return resources
 }
 
 func metricsTargetNamespace(na *v1alpha1.NeuralAutoscaler) string {
 	if na.Spec.Metrics.MetricsServer != nil && na.Spec.Metrics.MetricsServer.Namespace != "" {
 		return na.Spec.Metrics.MetricsServer.Namespace
 	}
+	if na.Spec.Metrics.Prometheus != nil && na.Spec.Metrics.Prometheus.Namespace != "" {
+		return na.Spec.Metrics.Prometheus.Namespace
+	}
 	return na.Namespace
 }
 
 func describeMetricTarget(spec v1alpha1.MetricsSourceSpec, resource v1alpha1.ResourceMetric) string {
-	if spec.MetricsServer == nil {
-		return "metrics-server"
-	}
-	ms := spec.MetricsServer
 	metric := string(resource)
 	switch resource {
 	case v1alpha1.ResourceMetricCPU:
@@ -278,6 +307,17 @@ func describeMetricTarget(spec v1alpha1.MetricsSourceSpec, resource v1alpha1.Res
 	case v1alpha1.ResourceMetricMemory:
 		metric = "memory"
 	}
+	if spec.Prometheus != nil {
+		if spec.Prometheus.TargetRef != nil {
+			ref := spec.Prometheus.TargetRef
+			return fmt.Sprintf("%s for %s %s from Prometheus", metric, ref.Kind, ref.Name)
+		}
+		return fmt.Sprintf("%s from Prometheus query", metric)
+	}
+	if spec.MetricsServer == nil {
+		return "metrics source"
+	}
+	ms := spec.MetricsServer
 	return fmt.Sprintf("%s for %s %s", metric, ms.TargetRef.Kind, ms.TargetRef.Name)
 }
 

@@ -1,0 +1,89 @@
+# Demo database workload for neural-autoscaler in-place resize testing.
+# Targeted by NeuralAutoscaler postgres samples (prometheus.targetRef.name: postgres).
+#
+# Watch resize:
+#   kubectl get pods -l app=postgres -w
+#   kubectl get pod postgres-0 -o jsonpath='{.spec.containers[0].resources.requests}{"\n"}'
+#   kubectl describe pod postgres-0 | grep -A5 "Requests:"
+#
+# Requires InPlacePodVerticalScaling (see hack/kind-inplace-config.yaml for kind clusters on Kubernetes < 1.33).
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: neural-autoscaler
+spec:
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: neural-autoscaler
+spec:
+  replicas: 1
+  serviceName: postgres
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      volumes:
+        - name: data
+          emptyDir: {}
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: demo
+            - name: POSTGRES_DB
+              value: bench
+            - name: POSTGRES_INITDB_ARGS
+              value: -c shared_buffers=32MB -c max_connections=20
+          command:
+            - sh
+            - -ec
+            - |
+              docker-entrypoint.sh postgres &
+              until pg_isready -U postgres; do sleep 1; done
+              pgbench -i -s 5 "$POSTGRES_DB" 2>/dev/null || true
+              # Bursty OLTP load: helps metrics-server + forecast see rising CPU/memory.
+              while true; do
+                pgbench -c 2 -j 1 -T 45 "$POSTGRES_DB" 2>/dev/null || true
+                sleep 15
+              done
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          resizePolicy:
+            - resourceName: cpu
+              restartPolicy: NotRequired
+            - resourceName: memory
+              restartPolicy: NotRequired

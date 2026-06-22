@@ -39,28 +39,31 @@ func validateMetricsServerSource(spec MetricsServerSourceSpec) error {
 	if len(spec.Resources) == 0 {
 		return fmt.Errorf("metricsServer.resources must contain at least one resource")
 	}
-	seen := make(map[ResourceMetric]struct{}, len(spec.Resources))
-	for _, r := range spec.Resources {
-		switch r {
-		case ResourceMetricCPU, ResourceMetricMemory:
-		default:
-			return fmt.Errorf("metricsServer.resources: unsupported resource %q", r)
-		}
-		if _, ok := seen[r]; ok {
-			return fmt.Errorf("metricsServer.resources: duplicate resource %q", r)
-		}
-		seen[r] = struct{}{}
-	}
-	return nil
+	return validateResourceMetrics(spec.Resources, "metricsServer.resources")
 }
 
 func validatePrometheusSource(spec PrometheusSourceSpec) error {
 	if strings.TrimSpace(spec.URL) == "" {
 		return fmt.Errorf("prometheus.url is required")
 	}
-	if strings.TrimSpace(spec.Query) == "" {
-		return fmt.Errorf("prometheus.query is required")
+
+	hasQuery := strings.TrimSpace(spec.Query) != ""
+	hasTargetRef := spec.TargetRef != nil
+
+	if hasTargetRef {
+		if err := validatePrometheusTargetRef(*spec.TargetRef); err != nil {
+			return err
+		}
+		if len(spec.Resources) == 0 {
+			return fmt.Errorf("prometheus.resources must contain at least one resource when targetRef is set")
+		}
+		if err := validateResourceMetrics(spec.Resources, "prometheus.resources"); err != nil {
+			return err
+		}
+	} else if !hasQuery {
+		return fmt.Errorf("prometheus.targetRef and prometheus.resources are required when query is unset")
 	}
+
 	switch spec.QueryType {
 	case "", PrometheusQueryInstant, PrometheusQueryRange:
 	default:
@@ -79,6 +82,37 @@ func validatePrometheusSource(spec PrometheusSourceSpec) error {
 	}
 	if err := validateOptionalDuration("prometheus.lookback", spec.Lookback); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validatePrometheusTargetRef(ref CrossVersionObjectReference) error {
+	if strings.TrimSpace(ref.Kind) == "" {
+		return fmt.Errorf("prometheus.targetRef.kind is required")
+	}
+	if strings.TrimSpace(ref.Name) == "" {
+		return fmt.Errorf("prometheus.targetRef.name is required")
+	}
+	switch ref.Kind {
+	case "Deployment", "StatefulSet", "ReplicaSet", "Pod":
+	default:
+		return fmt.Errorf("prometheus.targetRef.kind %q is not supported", ref.Kind)
+	}
+	return nil
+}
+
+func validateResourceMetrics(resources []ResourceMetric, field string) error {
+	seen := make(map[ResourceMetric]struct{}, len(resources))
+	for _, r := range resources {
+		switch r {
+		case ResourceMetricCPU, ResourceMetricMemory:
+		default:
+			return fmt.Errorf("%s: unsupported resource %q", field, r)
+		}
+		if _, ok := seen[r]; ok {
+			return fmt.Errorf("%s: duplicate resource %q", field, r)
+		}
+		seen[r] = struct{}{}
 	}
 	return nil
 }

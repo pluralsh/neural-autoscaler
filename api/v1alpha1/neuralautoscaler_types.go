@@ -95,17 +95,34 @@ type CrossVersionObjectReference struct {
 	Name string `json:"name"`
 }
 
-// PrometheusSourceSpec queries Prometheus for a metric time series.
+// PrometheusSourceSpec queries Prometheus for workload resource metrics.
+// When targetRef and resources are set, PromQL is built automatically from cAdvisor
+// container metrics. Query is optional and selects legacy single-query mode when set
+// without targetRef.
 type PrometheusSourceSpec struct {
 	// URL is the Prometheus server base URL, for example "http://prometheus.monitoring:9090".
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	URL string `json:"url"`
 
-	// Query is the PromQL expression to execute.
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	Query string `json:"query"`
+	// TargetRef identifies the scaled workload (Deployment, StatefulSet, ReplicaSet, or Pod).
+	// Required unless query is set for legacy single-query mode.
+	// +optional
+	TargetRef *CrossVersionObjectReference `json:"targetRef,omitempty"`
+
+	// Resources lists container resources to aggregate across matching pods.
+	// Required when targetRef is set.
+	// +optional
+	Resources []ResourceMetric `json:"resources,omitempty"`
+
+	// Namespace overrides the NeuralAutoscaler namespace for target resolution and PromQL filters.
+	// Defaults to the NeuralAutoscaler object namespace when unset.
+	Namespace string `json:"namespace,omitempty"`
+
+	// Query is an optional PromQL expression override. When unset, queries are built from
+	// targetRef and resources. When set without targetRef, legacy single-query mode is used.
+	// +optional
+	Query string `json:"query,omitempty"`
 
 	// QueryType selects /api/v1/query (instant) or /api/v1/query_range (range).
 	// Defaults to query_range.

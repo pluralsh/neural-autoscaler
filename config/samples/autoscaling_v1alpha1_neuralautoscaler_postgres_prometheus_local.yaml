@@ -1,0 +1,39 @@
+# Prometheus sample for local operator runs (`make run` / `make run-local`).
+# In another terminal, port-forward Kubecost Prometheus so the controller on
+# your host can reach it at 127.0.0.1:9090:
+#   kubectl port-forward -n kubecost svc/kubecost-prometheus-server 9090:80
+apiVersion: autoscaling.plural.sh/v1alpha1
+kind: NeuralAutoscaler
+metadata:
+  labels:
+    app.kubernetes.io/name: neuralautoscaler
+    app.kubernetes.io/instance: neuralautoscaler-postgres-prometheus-local
+    app.kubernetes.io/part-of: neural-autoscaler
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: neural-autoscaler
+  name: neuralautoscaler-postgres-prometheus-local
+spec:
+  metrics:
+    type: Prometheus
+    prometheus:
+      url: http://127.0.0.1:9090
+      targetRef:
+        kind: StatefulSet
+        name: postgres
+      resources:
+        - cpu
+        - memory
+      lookback: 1h
+      step: 1m
+  forecast:
+    horizon: 12
+    step: 1m
+  resize:
+    minChangePercent: 20
+    resources:
+      cpu:
+        min: 250m
+        max: "4"
+      memory:
+        min: 512Mi
+        max: 4Gi

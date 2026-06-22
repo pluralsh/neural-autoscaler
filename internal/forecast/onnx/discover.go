@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	ort "github.com/shota3506/onnxruntime-purego/onnxruntime"
+
+	"github.com/pluralsh/neural-autoscaler/internal/log"
 )
 
 // DiscoverModelFamily opens the ONNX model briefly and infers timesfm vs chronos2
@@ -32,10 +34,12 @@ func DiscoverModelFamily(modelPath, runtimeLibPath string, ortAPIVersion int) (s
 
 	inputNames := session.InputNames()
 	if family, ok := familyFromInputNames(inputNames); ok {
+		log.Debug("discovered ONNX model family from input names", "family", family, "path", modelPath)
 		return family, nil
 	}
 
 	if family, ok := familyFromModelPath(modelPath); ok {
+		log.Debug("discovered ONNX model family from path", "family", family, "path", modelPath)
 		return family, nil
 	}
 

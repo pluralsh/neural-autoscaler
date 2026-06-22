@@ -46,6 +46,36 @@ spec:
 
 Point `targetRef` at a Deployment, StatefulSet, or ReplicaSet in the same namespace. Omit `resize` to run forecast-only (metrics collection and logging, no pod changes).
 
+### Prometheus metrics source
+
+Instead of metrics-server, you can point at a Prometheus-compatible API (for example Kubecost). PromQL is built automatically from `targetRef` and `resources`; only `url`, optional `auth`, `lookback`, and `step` are required beyond the workload selector:
+
+```yaml
+spec:
+  metrics:
+    type: Prometheus
+    prometheus:
+      url: http://kubecost-prometheus-server.kubecost.svc
+      targetRef:
+        kind: Deployment
+        name: api
+      resources:
+        - cpu
+        - memory
+      lookback: 1h
+      step: 1m
+  resize:
+    minChangePercent: 5
+    resources:
+      cpu:
+        min: 100m
+        max: "8"
+      memory:
+        min: 128Mi
+        max: 16Gi      
+
+```
+
 ## Quick start
 
 ### Prerequisites

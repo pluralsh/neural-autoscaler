@@ -8,10 +8,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	autoscalingv1alpha1 "github.com/pluralsh/neural-autoscaler/api/v1alpha1"
 	"github.com/pluralsh/neural-autoscaler/internal/forecast"
+	"github.com/pluralsh/neural-autoscaler/internal/log"
 )
 
 // Reconciler applies in-place pod resizes for a NeuralAutoscaler.
@@ -20,7 +20,7 @@ type Reconciler struct {
 }
 
 // Apply resizes pods resolved from metrics targetRef when per-resource forecast data is available.
-// recentHistory supplies buffered metrics-server samples used to floor forecast peaks with
+// recentHistory supplies buffered reconcile-interval samples used to floor forecast peaks with
 // the recent observed maximum (helps bursty CPU where Chronos median forecasts lag spikes).
 func (r *Reconciler) Apply(ctx context.Context, na *autoscalingv1alpha1.NeuralAutoscaler, forecasts map[autoscalingv1alpha1.ResourceMetric]forecast.Response, recentHistory map[autoscalingv1alpha1.ResourceMetric][]float64, podNames []string, namespace string) error {
 	if na.Spec.Resize == nil {
@@ -30,10 +30,10 @@ func (r *Reconciler) Apply(ctx context.Context, na *autoscalingv1alpha1.NeuralAu
 		return err
 	}
 
-	logger := log.FromContext(ctx)
+	naKey := client.ObjectKeyFromObject(na)
 	spec := na.Spec.Resize
 	if len(podNames) == 0 {
-		logger.Info("no pods to resize", "namespace", namespace)
+		log.Info("no pods to resize", "neuralAutoscaler", naKey, "namespace", namespace)
 		return nil
 	}
 
@@ -47,7 +47,8 @@ func (r *Reconciler) Apply(ctx context.Context, na *autoscalingv1alpha1.NeuralAu
 		if history, ok := recentHistory[resource]; ok {
 			observed := RecentPeak(history, DefaultRecentPeakWindow)
 			if raised := EffectivePeak(peak, observed); raised > peak {
-				logger.V(1).Info("raising forecast peak with recent observed maximum",
+				log.Debug("raising forecast peak with recent observed maximum",
+					"neuralAutoscaler", naKey,
 					"resource", resource,
 					"forecastPeak", peak,
 					"observedPeak", observed,
@@ -65,38 +66,37 @@ func (r *Reconciler) Apply(ctx context.Context, na *autoscalingv1alpha1.NeuralAu
 		return err
 	}
 	if len(eligiblePods) == 0 {
-		logger.Info("no eligible pods for resize", "namespace", namespace, "requested", len(podNames))
+		log.Info("no eligible pods for resize", "neuralAutoscaler", naKey, "namespace", namespace, "requested", len(podNames))
 		return nil
 	}
 
 	podCount := len(eligiblePods)
 	for _, pod := range eligiblePods {
-		if err := r.resizePod(ctx, pod, spec, forecastPeaks, podCount); err != nil {
-			logger.Error(err, "pod resize failed", "pod", client.ObjectKeyFromObject(&pod))
+		if err := r.resizePod(ctx, naKey, pod, spec, forecastPeaks, podCount); err != nil {
+			log.Error(err, "pod resize failed", "neuralAutoscaler", naKey, "pod", client.ObjectKeyFromObject(&pod))
 		}
 	}
 	return nil
 }
 
 func (r *Reconciler) listEligiblePods(ctx context.Context, namespace string, podNames []string) ([]corev1.Pod, error) {
-	logger := log.FromContext(ctx)
 	eligible := make([]corev1.Pod, 0, len(podNames))
 	for _, name := range podNames {
 		pod := &corev1.Pod{}
 		key := client.ObjectKey{Namespace: namespace, Name: name}
 		if err := r.Client.Get(ctx, key, pod); err != nil {
 			if apierrors.IsNotFound(err) {
-				logger.Info("skipping resize: pod not found", "pod", key)
+				log.Warning("skipping resize: pod not found", "pod", key)
 				continue
 			}
 			return nil, fmt.Errorf("get pod %q: %w", key, err)
 		}
 		if pod.DeletionTimestamp != nil {
-			logger.V(1).Info("skipping terminating pod", "pod", name)
+			log.Debug("skipping terminating pod", "pod", name)
 			continue
 		}
 		if resizeInProgress(pod) {
-			logger.Info("skipping pod with resize in progress", "pod", name)
+			log.Info("skipping pod with resize in progress", "pod", name)
 			continue
 		}
 		eligible = append(eligible, *pod)
@@ -104,12 +104,12 @@ func (r *Reconciler) listEligiblePods(ctx context.Context, namespace string, pod
 	return eligible, nil
 }
 
-func (r *Reconciler) resizePod(ctx context.Context, pod corev1.Pod, spec *autoscalingv1alpha1.ResizeSpec, forecastPeaks map[autoscalingv1alpha1.ResourceMetric]float64, podCount int) error {
+func (r *Reconciler) resizePod(ctx context.Context, naKey client.ObjectKey, pod corev1.Pod, spec *autoscalingv1alpha1.ResizeSpec, forecastPeaks map[autoscalingv1alpha1.ResourceMetric]float64, podCount int) error {
 	if pod.DeletionTimestamp != nil {
 		return nil
 	}
 	if resizeInProgress(&pod) {
-		log.FromContext(ctx).Info("skipping pod with resize in progress", "pod", pod.Name)
+		log.Info("skipping pod with resize in progress", "neuralAutoscaler", naKey, "pod", pod.Name)
 		return nil
 	}
 
@@ -122,8 +122,9 @@ func (r *Reconciler) resizePod(ctx context.Context, pod corev1.Pod, spec *autosc
 	})
 	targets, changed := ApplyMinChangeThreshold(current, targets, spec.MinChangePercent, spec.Resources)
 	if !changed {
-		log.FromContext(ctx).V(1).Info(
+		log.Warning(
 			"skipping pod resize: change below minChangePercent threshold",
+			"neuralAutoscaler", naKey,
 			"pod", pod.Name,
 			"minChangePercent", formatMinChangePercent(spec),
 		)
@@ -134,8 +135,8 @@ func (r *Reconciler) resizePod(ctx context.Context, pod corev1.Pod, spec *autosc
 	}
 
 	resizePod := buildResizePod(pod, targets, spec.Resources)
-	logger := log.FromContext(ctx)
-	logger.Info("resizing pod in place",
+	log.Info("resizing pod in place",
+		"neuralAutoscaler", naKey,
 		"pod", pod.Name,
 		"namespace", pod.Namespace,
 		"cpu", formatChange(current, corev1.ResourceCPU, targets.CPU),

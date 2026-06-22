@@ -1,0 +1,39 @@
+apiVersion: autoscaling.plural.sh/v1alpha1
+kind: NeuralAutoscaler
+metadata:
+  labels:
+    app.kubernetes.io/name: neuralautoscaler
+    app.kubernetes.io/instance: neuralautoscaler-prometheus
+    app.kubernetes.io/part-of: neural-autoscaler
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: neural-autoscaler
+  name: neuralautoscaler-prometheus
+spec:
+  metrics:
+    type: Prometheus
+    prometheus:
+      #url: http://kubecost-prometheus-server.kubecost.svc
+      url: http://127.0.0.1:9090
+      targetRef:
+        kind: Deployment
+        name: api
+      resources:
+        - cpu
+        - memory
+      lookback: 1h
+      step: 1m
+      # auth:  # optional SecretKeySelector in the same namespace as this CR
+      #   name: prometheus-credentials
+      #   key: token
+  forecast:
+    horizon: 12
+    step: 1m
+  resize:
+    minChangePercent: 5
+    resources:
+      cpu:
+        min: 100m
+        max: "8"
+      memory:
+        min: 128Mi
+        max: 16Gi

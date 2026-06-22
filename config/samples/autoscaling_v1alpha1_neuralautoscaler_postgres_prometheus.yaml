@@ -1,0 +1,38 @@
+apiVersion: autoscaling.plural.sh/v1alpha1
+kind: NeuralAutoscaler
+metadata:
+  labels:
+    app.kubernetes.io/name: neuralautoscaler
+    app.kubernetes.io/instance: neuralautoscaler-postgres-prometheus
+    app.kubernetes.io/part-of: neural-autoscaler
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: neural-autoscaler
+  name: neuralautoscaler-postgres-prometheus
+spec:
+  metrics:
+    type: Prometheus
+    prometheus:
+      url: http://kubecost-prometheus-server.kubecost.svc
+      targetRef:
+        kind: StatefulSet
+        name: postgres
+      resources:
+        - cpu
+        - memory
+      lookback: 1h
+      step: 1m
+      # auth:  # optional SecretKeySelector in the same namespace as this CR
+      #   name: prometheus-credentials
+      #   key: token
+  forecast:
+    horizon: 12
+    step: 1m
+  resize:
+    minChangePercent: 20
+    resources:
+      cpu:
+        min: 250m
+        max: "4"
+      memory:
+        min: 512Mi
+        max: 4Gi

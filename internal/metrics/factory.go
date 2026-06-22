@@ -37,6 +37,7 @@ type Factory struct {
 	K8sClient     client.Client
 	MetricsClient PodMetricsClient
 	History       *HistoryStore
+	HTTPClient    HTTPDoer
 	Now           func() time.Time
 }
 
@@ -56,7 +57,13 @@ func (f *Factory) NewFetcher(spec autoscalingv1alpha1.MetricsSourceSpec, namespa
 		}
 		return newMetricsServerFetcher(f, *spec.MetricsServer, namespace), nil
 	case autoscalingv1alpha1.MetricsSourcePrometheus:
-		return nil, fmt.Errorf("prometheus metrics source is not implemented yet")
+		if spec.Prometheus.TargetRef != nil && f.K8sClient == nil {
+			return nil, fmt.Errorf("kubernetes client is required for Prometheus targetRef resolution")
+		}
+		if spec.Prometheus.Auth != nil && f.K8sClient == nil {
+			return nil, fmt.Errorf("kubernetes client is required for Prometheus auth")
+		}
+		return newPrometheusFetcher(f, *spec.Prometheus, namespace), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedSource, spec.Type)
 	}

@@ -98,3 +98,63 @@ func TestHistoryStoreConcurrentAppend(t *testing.T) {
 		t.Fatalf("Len() = %d, want 512 (capacity cap)", got)
 	}
 }
+
+func TestHistoryStoreAppendLatest(t *testing.T) {
+	t.Parallel()
+
+	store := NewHistoryStore(8)
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	key := "ns/workload/cpu"
+
+	store.AppendLatest(key, Series{
+		Values:     []float64{100, 200, 300},
+		Timestamps: []time.Time{ts, ts.Add(time.Minute), ts.Add(2 * time.Minute)},
+	})
+
+	got := store.Get(key)
+	if len(got.Values) != 1 || got.Values[0] != 300 {
+		t.Fatalf("AppendLatest() = %v, want [300]", got.Values)
+	}
+}
+
+func TestRecentPeakSamplesPrefersAccumulatedBuffer(t *testing.T) {
+	t.Parallel()
+
+	store := NewHistoryStore(512)
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	key := "ns/workload/cpu"
+
+	for i := 0; i < 10; i++ {
+		v := 200.0
+		if i >= 5 {
+			v = 2000.0
+		}
+		store.Append(key, v, ts.Add(time.Duration(i)*20*time.Second))
+	}
+
+	smoothed := Series{Values: []float64{200, 250, 300, 350, 400, 450, 500, 550, 600}}
+	samples := RecentPeakSamples(store, key, smoothed)
+	if len(samples) != 10 {
+		t.Fatalf("len(samples) = %d, want 10 accumulated reconcile samples", len(samples))
+	}
+
+	var max float64
+	for _, v := range samples {
+		if v > max {
+			max = v
+		}
+	}
+	if max != 2000 {
+		t.Fatalf("accumulated max = %v, want 2000", max)
+	}
+
+	var rangeMax float64
+	for _, v := range smoothed.Values {
+		if v > rangeMax {
+			rangeMax = v
+		}
+	}
+	if rangeMax >= 2000 {
+		t.Fatalf("smoothed range max = %v, should under-estimate burst", rangeMax)
+	}
+}
