@@ -113,7 +113,12 @@ func (r *Reconciler) resizePod(ctx context.Context, naKey client.ObjectKey, pod 
 		return nil
 	}
 
-	current := primaryContainerRequests(pod)
+	containerIndex, ok := primaryContainerIndex(pod)
+	if !ok {
+		log.Warning("skipping pod resize: pod has no containers", "neuralAutoscaler", naKey, "pod", pod.Name)
+		return nil
+	}
+	current := pod.Spec.Containers[containerIndex].Resources.Requests
 	targets := ComputeTargets(TargetInput{
 		ForecastPeaks:   forecastPeaks,
 		PodCount:        podCount,
@@ -134,7 +139,7 @@ func (r *Reconciler) resizePod(ctx context.Context, naKey client.ObjectKey, pod 
 		return nil
 	}
 
-	resizePod := buildResizePod(pod, targets, spec.Resources)
+	resizePod := buildResizePod(pod, containerIndex, targets, spec.Resources)
 	log.Info("resizing pod in place",
 		"neuralAutoscaler", naKey,
 		"pod", pod.Name,
@@ -149,41 +154,43 @@ func (r *Reconciler) resizePod(ctx context.Context, naKey client.ObjectKey, pod 
 	return nil
 }
 
-func primaryContainerRequests(pod corev1.Pod) corev1.ResourceList {
+func primaryContainerIndex(pod corev1.Pod) (int, bool) {
 	if len(pod.Spec.Containers) == 0 {
-		return nil
+		return 0, false
 	}
-	return pod.Spec.Containers[0].Resources.Requests
+	return 0, true
 }
 
-func buildResizePod(pod corev1.Pod, targets TargetResult, resources map[string]autoscalingv1alpha1.ResourceBoundsSpec) *corev1.Pod {
+func buildResizePod(pod corev1.Pod, containerIndex int, targets TargetResult, resources map[string]autoscalingv1alpha1.ResourceBoundsSpec) *corev1.Pod {
 	controlled := autoscalingv1alpha1.ControlledResourceSet(resources)
 	out := pod.DeepCopy()
-	for i := range out.Spec.Containers {
-		reqs := out.Spec.Containers[i].Resources.Requests
-		if reqs == nil {
-			reqs = corev1.ResourceList{}
-		}
-		limits := out.Spec.Containers[i].Resources.Limits
-		if limits == nil {
-			limits = corev1.ResourceList{}
-		}
-
-		if controlled[corev1.ResourceCPU] && targets.CPU != nil {
-			reqs[corev1.ResourceCPU] = targets.CPU.DeepCopy()
-			if lim, ok := limits[corev1.ResourceCPU]; ok && lim.Cmp(*targets.CPU) < 0 {
-				limits[corev1.ResourceCPU] = targets.CPU.DeepCopy()
-			}
-		}
-		if controlled[corev1.ResourceMemory] && targets.Memory != nil {
-			reqs[corev1.ResourceMemory] = targets.Memory.DeepCopy()
-			if lim, ok := limits[corev1.ResourceMemory]; ok && lim.Cmp(*targets.Memory) < 0 {
-				limits[corev1.ResourceMemory] = targets.Memory.DeepCopy()
-			}
-		}
-		out.Spec.Containers[i].Resources.Requests = reqs
-		out.Spec.Containers[i].Resources.Limits = limits
+	if containerIndex < 0 || containerIndex >= len(out.Spec.Containers) {
+		return out
 	}
+
+	reqs := out.Spec.Containers[containerIndex].Resources.Requests
+	if reqs == nil {
+		reqs = corev1.ResourceList{}
+	}
+	limits := out.Spec.Containers[containerIndex].Resources.Limits
+	if limits == nil {
+		limits = corev1.ResourceList{}
+	}
+
+	if controlled[corev1.ResourceCPU] && targets.CPU != nil {
+		reqs[corev1.ResourceCPU] = targets.CPU.DeepCopy()
+		if lim, ok := limits[corev1.ResourceCPU]; ok && lim.Cmp(*targets.CPU) < 0 {
+			limits[corev1.ResourceCPU] = targets.CPU.DeepCopy()
+		}
+	}
+	if controlled[corev1.ResourceMemory] && targets.Memory != nil {
+		reqs[corev1.ResourceMemory] = targets.Memory.DeepCopy()
+		if lim, ok := limits[corev1.ResourceMemory]; ok && lim.Cmp(*targets.Memory) < 0 {
+			limits[corev1.ResourceMemory] = targets.Memory.DeepCopy()
+		}
+	}
+	out.Spec.Containers[containerIndex].Resources.Requests = reqs
+	out.Spec.Containers[containerIndex].Resources.Limits = limits
 	return out
 }
 
