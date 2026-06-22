@@ -10,6 +10,9 @@ image:
 
 leaderElect: true
 
+# klog verbosity (-v). 0 = Info/Warning/Error (default); 4 = adds Debug.
+logLevel: 0
+
 # Optional overrides for the bundled Chronos-2 ONNX model in the image.
 # Leave empty to use the image default (MODEL_PATH=/models/chronos-2-onnx/model.onnx).
 modelPath: ""

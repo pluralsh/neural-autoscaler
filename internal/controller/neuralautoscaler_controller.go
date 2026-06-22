@@ -131,8 +131,10 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	forecasts := make(map[v1alpha1.ResourceMetric]forecast.Response)
+	forecastErrors := make(map[v1alpha1.ResourceMetric]error)
 	historyByResource := make(map[v1alpha1.ResourceMetric]metrics.Series)
-	for _, resource := range resourcesToProcess(na, fetchResult) {
+	resources := resourcesToProcess(na, fetchResult)
+	for _, resource := range resources {
 		series, ok := fetchResult.ByResource[resource]
 		if !ok {
 			continue
@@ -151,7 +153,7 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		if r.Forecaster != nil && na.Spec.Forecast != nil {
 			if len(forecastSeries.Values) < metrics.MinForecastSamples {
-				log.Warning("insufficient history for forecast",
+				log.Debug("insufficient history for forecast",
 					"neuralAutoscaler", naKey,
 					"resource", resource,
 					"samples", len(forecastSeries.Values),
@@ -160,6 +162,7 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 			resp, err := r.runForecast(ctx, na, resource, forecastSeries)
 			if err != nil {
+				forecastErrors[resource] = err
 				log.Error(err, "forecast failed", "neuralAutoscaler", naKey, "resource", resource)
 			} else {
 				forecasts[resource] = resp
@@ -173,7 +176,9 @@ func (r *NeuralAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	if na.Spec.Resize != nil {
 		if len(forecasts) == 0 {
-			log.Warning("skipping resize: forecast not ready", "neuralAutoscaler", naKey)
+			reason, extra := forecastNotReadyReason(na, r.Forecaster, resources, historyByResource, forecastErrors)
+			logArgs := append([]any{"neuralAutoscaler", naKey, "reason", reason}, extra...)
+			log.Warning("skipping resize: forecast not ready", logArgs...)
 		} else {
 			targetNamespace := metricsTargetNamespace(na)
 			resizeReconciler := resize.Reconciler{Client: r.Client}
@@ -269,6 +274,38 @@ func (r *NeuralAutoscalerReconciler) runForecast(ctx context.Context, na *v1alph
 	log.Info("forecast completed", logArgs...)
 
 	return resp, nil
+}
+
+// forecastNotReadyReason explains why resize was skipped because no forecast is available.
+func forecastNotReadyReason(
+	na *v1alpha1.NeuralAutoscaler,
+	forecaster forecast.Forecaster,
+	resources []v1alpha1.ResourceMetric,
+	historyByResource map[v1alpha1.ResourceMetric]metrics.Series,
+	forecastErrors map[v1alpha1.ResourceMetric]error,
+) (reason string, extra []any) {
+	if na.Spec.Forecast == nil {
+		return "forecast_not_configured", nil
+	}
+	if forecaster == nil {
+		return "forecaster_not_loaded", nil
+	}
+
+	maxSamples := 0
+	for _, resource := range resources {
+		if series, ok := historyByResource[resource]; ok && len(series.Values) > maxSamples {
+			maxSamples = len(series.Values)
+		}
+	}
+	if maxSamples < metrics.MinForecastSamples {
+		return "insufficient_history", []any{"samples", maxSamples, "need", metrics.MinForecastSamples}
+	}
+
+	for resource, err := range forecastErrors {
+		return "forecast_failed", []any{"resource", resource, "err", err.Error()}
+	}
+
+	return "no_forecasts", nil
 }
 
 func resourcesToProcess(na *v1alpha1.NeuralAutoscaler, fetchResult metrics.FetchResult) []v1alpha1.ResourceMetric {

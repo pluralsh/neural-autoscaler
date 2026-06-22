@@ -1,26 +1,25 @@
+# Metrics-server sample for the api demo workload (see workload-deployment.yaml).
+# Warms up faster than Prometheus: ~16 reconciles at 20s (~5 min) vs ~16 min at 1m step.
 apiVersion: autoscaling.plural.sh/v1alpha1
 kind: NeuralAutoscaler
 metadata:
   labels:
     app.kubernetes.io/name: neuralautoscaler
-    app.kubernetes.io/instance: neuralautoscaler-sample
+    app.kubernetes.io/instance: neuralautoscaler-metrics-server
     app.kubernetes.io/part-of: neural-autoscaler
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: neural-autoscaler
-  name: neuralautoscaler-sample
+  name: neuralautoscaler-metrics-server
 spec:
   metrics:
-    type: Prometheus
-    prometheus:
-      url: http://kubecost-prometheus-server.kubecost.svc
+    type: MetricsServer
+    metricsServer:
       targetRef:
         kind: Deployment
         name: api
       resources:
         - cpu
         - memory
-      lookback: 1h
-      step: 1m
   forecast:
     horizon: 12
     step: 1m

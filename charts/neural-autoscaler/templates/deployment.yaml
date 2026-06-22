@@ -42,6 +42,9 @@ spec:
         - --leader-elect
         {{- end }}
         - --model-path={{ $modelPath }}
+        {{- if gt (int .Values.logLevel) 0 }}
+        - -v={{ .Values.logLevel }}
+        {{- end }}
         {{- with .Values.manager.args }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

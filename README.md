@@ -93,6 +93,10 @@ helm install neural-autoscaler ./charts/neural-autoscaler \
   --create-namespace
 ```
 
+### Samples
+
+Manifests under `config/samples/` include the `api` demo workload and NeuralAutoscaler variants. `kubectl apply -k config/samples` applies the metrics-server sample (`autoscaling_v1alpha1_neuralautoscaler_metrics_server.yaml`), which warms up in ~16 reconciles at 20s (~5 min). Prometheus samples (`autoscaling_v1alpha1_neuralautoscaler_prometheus*.yaml`) need ~16 min at 1m step before forecasting.
+
 ### Local development
 
 ```bash

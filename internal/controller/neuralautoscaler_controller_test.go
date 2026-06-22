@@ -1,12 +1,79 @@
 package controller
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
-	v1alpha1 "github.com/pluralsh/neural-autoscaler/api/v1alpha1"
+	v1alpha1 	"github.com/pluralsh/neural-autoscaler/api/v1alpha1"
+	"github.com/pluralsh/neural-autoscaler/internal/forecast"
 	"github.com/pluralsh/neural-autoscaler/internal/metrics"
 )
+
+type stubForecaster struct{}
+
+func (stubForecaster) Forecast(context.Context, forecast.Request) (forecast.Response, error) {
+	return forecast.Response{}, nil
+}
+
+func (stubForecaster) Close() error { return nil }
+
+func TestForecastNotReadyReason(t *testing.T) {
+	t.Parallel()
+
+	horizon := int32(12)
+	forecastSpec := &v1alpha1.ForecastSpec{Horizon: &horizon}
+	resources := []v1alpha1.ResourceMetric{v1alpha1.ResourceMetricCPU}
+	history := map[v1alpha1.ResourceMetric]metrics.Series{
+		v1alpha1.ResourceMetricCPU: {Values: make([]float64, 8)},
+	}
+	fullHistory := map[v1alpha1.ResourceMetric]metrics.Series{
+		v1alpha1.ResourceMetricCPU: {Values: make([]float64, metrics.MinForecastSamples)},
+	}
+	stubForecaster := stubForecaster{}
+
+	t.Run("forecast not configured", func(t *testing.T) {
+		na := &v1alpha1.NeuralAutoscaler{Spec: v1alpha1.NeuralAutoscalerSpec{}}
+		reason, extra := forecastNotReadyReason(na, stubForecaster, resources, history, nil)
+		if reason != "forecast_not_configured" || len(extra) != 0 {
+			t.Fatalf("got reason=%q extra=%v", reason, extra)
+		}
+	})
+
+	t.Run("forecaster not loaded", func(t *testing.T) {
+		na := &v1alpha1.NeuralAutoscaler{Spec: v1alpha1.NeuralAutoscalerSpec{Forecast: forecastSpec}}
+		reason, extra := forecastNotReadyReason(na, nil, resources, history, nil)
+		if reason != "forecaster_not_loaded" || len(extra) != 0 {
+			t.Fatalf("got reason=%q extra=%v", reason, extra)
+		}
+	})
+
+	t.Run("insufficient history", func(t *testing.T) {
+		na := &v1alpha1.NeuralAutoscaler{Spec: v1alpha1.NeuralAutoscalerSpec{Forecast: forecastSpec}}
+		reason, extra := forecastNotReadyReason(na, stubForecaster, resources, history, nil)
+		if reason != "insufficient_history" {
+			t.Fatalf("reason = %q, want insufficient_history", reason)
+		}
+		if len(extra) != 4 || extra[0] != "samples" || extra[1] != 8 || extra[2] != "need" || extra[3] != metrics.MinForecastSamples {
+			t.Fatalf("extra = %v", extra)
+		}
+	})
+
+	t.Run("forecast failed", func(t *testing.T) {
+		na := &v1alpha1.NeuralAutoscaler{Spec: v1alpha1.NeuralAutoscalerSpec{Forecast: forecastSpec}}
+		errs := map[v1alpha1.ResourceMetric]error{
+			v1alpha1.ResourceMetricCPU: errors.New("onnx inference failed"),
+		}
+		reason, extra := forecastNotReadyReason(na, stubForecaster, resources, fullHistory, errs)
+		if reason != "forecast_failed" {
+			t.Fatalf("reason = %q, want forecast_failed", reason)
+		}
+		if len(extra) != 4 || extra[0] != "resource" || extra[2] != "err" {
+			t.Fatalf("extra = %v", extra)
+		}
+	})
+}
 
 func TestAppendHistorySamplePrometheusPath(t *testing.T) {
 	t.Parallel()
