@@ -113,20 +113,42 @@ func (r *Reconciler) resizePod(ctx context.Context, naKey client.ObjectKey, pod 
 		return nil
 	}
 
-	containerIndex, ok := primaryContainerIndex(pod)
-	if !ok {
+	containerIndexes := targetContainerIndexes(pod, spec)
+	if len(containerIndexes) == 0 {
+		if spec.ContainerName != nil {
+			log.Warning(
+				"skipping pod resize: target container not found",
+				"neuralAutoscaler", naKey,
+				"pod", pod.Name,
+				"targetContainer", *spec.ContainerName,
+			)
+			return nil
+		}
 		log.Warning("skipping pod resize: pod has no containers", "neuralAutoscaler", naKey, "pod", pod.Name)
 		return nil
 	}
-	current := pod.Spec.Containers[containerIndex].Resources.Requests
-	targets := ComputeTargets(TargetInput{
-		ForecastPeaks:   forecastPeaks,
-		PodCount:        podCount,
-		CurrentRequests: current,
-		Resources:       spec.Resources,
-	})
-	targets, changed := ApplyMinChangeThreshold(current, targets, spec.MinChangePercent, spec.Resources)
-	if !changed {
+
+	plans := make([]containerResizePlan, 0, len(containerIndexes))
+	for _, idx := range containerIndexes {
+		current := pod.Spec.Containers[idx].Resources.Requests
+		targets := ComputeTargets(TargetInput{
+			ForecastPeaks:   forecastPeaks,
+			PodCount:        podCount,
+			CurrentRequests: current,
+			Resources:       spec.Resources,
+		})
+		targets, changed := ApplyMinChangeThreshold(current, targets, spec.MinChangePercent, spec.Resources)
+		if !changed || !targetsChanged(current, targets) {
+			continue
+		}
+		plans = append(plans, containerResizePlan{
+			Index:   idx,
+			Name:    pod.Spec.Containers[idx].Name,
+			Current: current,
+			Targets: targets,
+		})
+	}
+	if len(plans) == 0 {
 		log.Warning(
 			"skipping pod resize: change below minChangePercent threshold",
 			"neuralAutoscaler", naKey,
@@ -135,17 +157,15 @@ func (r *Reconciler) resizePod(ctx context.Context, naKey client.ObjectKey, pod 
 		)
 		return nil
 	}
-	if !targetsChanged(current, targets) {
-		return nil
-	}
 
-	resizePod := buildResizePod(pod, containerIndex, targets, spec.Resources)
+	resizePod := buildResizePod(pod, plans, spec.Resources)
 	log.Info("resizing pod in place",
 		"neuralAutoscaler", naKey,
 		"pod", pod.Name,
 		"namespace", pod.Namespace,
-		"cpu", formatChange(current, corev1.ResourceCPU, targets.CPU),
-		"memory", formatChange(current, corev1.ResourceMemory, targets.Memory),
+		"containers", containerNames(plans),
+		"cpu", formatContainerChanges(plans, corev1.ResourceCPU),
+		"memory", formatContainerChanges(plans, corev1.ResourceMemory),
 	)
 
 	if err := r.Client.SubResource("resize").Update(ctx, resizePod); err != nil {
@@ -154,43 +174,67 @@ func (r *Reconciler) resizePod(ctx context.Context, naKey client.ObjectKey, pod 
 	return nil
 }
 
-func primaryContainerIndex(pod corev1.Pod) (int, bool) {
-	if len(pod.Spec.Containers) == 0 {
-		return 0, false
-	}
-	return 0, true
+type containerResizePlan struct {
+	Index   int
+	Name    string
+	Current corev1.ResourceList
+	Targets TargetResult
 }
 
-func buildResizePod(pod corev1.Pod, containerIndex int, targets TargetResult, resources map[string]autoscalingv1alpha1.ResourceBoundsSpec) *corev1.Pod {
+func targetContainerIndexes(pod corev1.Pod, spec *autoscalingv1alpha1.ResizeSpec) []int {
+	if len(pod.Spec.Containers) == 0 {
+		return nil
+	}
+	if spec != nil && spec.ContainerName != nil {
+		name := *spec.ContainerName
+		if name == "*" {
+			indexes := make([]int, len(pod.Spec.Containers))
+			for i := range pod.Spec.Containers {
+				indexes[i] = i
+			}
+			return indexes
+		}
+		for i, c := range pod.Spec.Containers {
+			if c.Name == name {
+				return []int{i}
+			}
+		}
+		return nil
+	}
+	return []int{0}
+}
+
+func buildResizePod(pod corev1.Pod, plans []containerResizePlan, resources map[string]autoscalingv1alpha1.ResourceBoundsSpec) *corev1.Pod {
 	controlled := autoscalingv1alpha1.ControlledResourceSet(resources)
 	out := pod.DeepCopy()
-	if containerIndex < 0 || containerIndex >= len(out.Spec.Containers) {
-		return out
-	}
-
-	reqs := out.Spec.Containers[containerIndex].Resources.Requests
-	if reqs == nil {
-		reqs = corev1.ResourceList{}
-	}
-	limits := out.Spec.Containers[containerIndex].Resources.Limits
-	if limits == nil {
-		limits = corev1.ResourceList{}
-	}
-
-	if controlled[corev1.ResourceCPU] && targets.CPU != nil {
-		reqs[corev1.ResourceCPU] = targets.CPU.DeepCopy()
-		if lim, ok := limits[corev1.ResourceCPU]; ok && lim.Cmp(*targets.CPU) < 0 {
-			limits[corev1.ResourceCPU] = targets.CPU.DeepCopy()
+	for _, plan := range plans {
+		if plan.Index < 0 || plan.Index >= len(out.Spec.Containers) {
+			continue
 		}
-	}
-	if controlled[corev1.ResourceMemory] && targets.Memory != nil {
-		reqs[corev1.ResourceMemory] = targets.Memory.DeepCopy()
-		if lim, ok := limits[corev1.ResourceMemory]; ok && lim.Cmp(*targets.Memory) < 0 {
-			limits[corev1.ResourceMemory] = targets.Memory.DeepCopy()
+		reqs := out.Spec.Containers[plan.Index].Resources.Requests
+		if reqs == nil {
+			reqs = corev1.ResourceList{}
 		}
+		limits := out.Spec.Containers[plan.Index].Resources.Limits
+		if limits == nil {
+			limits = corev1.ResourceList{}
+		}
+
+		if controlled[corev1.ResourceCPU] && plan.Targets.CPU != nil {
+			reqs[corev1.ResourceCPU] = plan.Targets.CPU.DeepCopy()
+			if lim, ok := limits[corev1.ResourceCPU]; ok && lim.Cmp(*plan.Targets.CPU) < 0 {
+				limits[corev1.ResourceCPU] = plan.Targets.CPU.DeepCopy()
+			}
+		}
+		if controlled[corev1.ResourceMemory] && plan.Targets.Memory != nil {
+			reqs[corev1.ResourceMemory] = plan.Targets.Memory.DeepCopy()
+			if lim, ok := limits[corev1.ResourceMemory]; ok && lim.Cmp(*plan.Targets.Memory) < 0 {
+				limits[corev1.ResourceMemory] = plan.Targets.Memory.DeepCopy()
+			}
+		}
+		out.Spec.Containers[plan.Index].Resources.Requests = reqs
+		out.Spec.Containers[plan.Index].Resources.Limits = limits
 	}
-	out.Spec.Containers[containerIndex].Resources.Requests = reqs
-	out.Spec.Containers[containerIndex].Resources.Limits = limits
 	return out
 }
 
@@ -234,4 +278,31 @@ func formatChange(current corev1.ResourceList, name corev1.ResourceName, desired
 		newVal = desired.String()
 	}
 	return old + " -> " + newVal
+}
+
+func containerNames(plans []containerResizePlan) []string {
+	names := make([]string, 0, len(plans))
+	for _, plan := range plans {
+		names = append(names, plan.Name)
+	}
+	return names
+}
+
+func formatContainerChanges(plans []containerResizePlan, name corev1.ResourceName) []string {
+	changes := make([]string, 0, len(plans))
+	for _, plan := range plans {
+		changes = append(changes, plan.Name+": "+formatChange(plan.Current, name, targetForResource(plan.Targets, name)))
+	}
+	return changes
+}
+
+func targetForResource(targets TargetResult, name corev1.ResourceName) *resource.Quantity {
+	switch name {
+	case corev1.ResourceCPU:
+		return targets.CPU
+	case corev1.ResourceMemory:
+		return targets.Memory
+	default:
+		return nil
+	}
 }

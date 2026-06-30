@@ -237,6 +237,13 @@ spec:
                 description: Resize optionally enables in-place pod resource resizing
                   after a forecast is available.
                 properties:
+                  containerName:
+                    description: |-
+                      ContainerName optionally selects which container in each target pod is resized.
+                      Set to "*" to target all containers in a pod.
+                      When unset, the primary container (spec.containers[0]) is used.
+                    minLength: 1
+                    type: string
                   minChangePercent:
                     description: |-
                       MinChangePercent is the minimum relative change required before a resource

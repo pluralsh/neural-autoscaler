@@ -152,6 +152,13 @@ const DefaultMinChangePercent int32 = 10
 // metrics.metricsServer.targetRef. Each entry in resources is driven by the
 // matching metric from metrics.metricsServer.resources.
 type ResizeSpec struct {
+	// ContainerName optionally selects which container in each target pod is resized.
+	// Set to "*" to target all containers in a pod.
+	// When unset, the primary container (spec.containers[0]) is used.
+	// +kubebuilder:validation:MinLength=1
+	// +optional
+	ContainerName *string `json:"containerName,omitempty"`
+
 	// MinChangePercent is the minimum relative change required before a resource
 	// request is updated in place. Compares |new-old|/old*100; when old is zero,
 	// any positive new value counts as a change. Defaults to 10 when unset.

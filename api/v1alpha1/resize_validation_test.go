@@ -39,6 +39,36 @@ func TestValidateResize(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "empty container name",
+			spec: &ResizeSpec{
+				ContainerName: strPtr(""),
+				Resources: map[string]ResourceBoundsSpec{
+					string(ResourceMetricCPU): {},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "whitespace container name",
+			spec: &ResizeSpec{
+				ContainerName: strPtr("   "),
+				Resources: map[string]ResourceBoundsSpec{
+					string(ResourceMetricCPU): {},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid container name",
+			spec: &ResizeSpec{
+				ContainerName: strPtr("app"),
+				Resources: map[string]ResourceBoundsSpec{
+					string(ResourceMetricCPU): {},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "no resources",
 			spec: &ResizeSpec{
 				Resources: map[string]ResourceBoundsSpec{},

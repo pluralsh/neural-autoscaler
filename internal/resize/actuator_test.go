@@ -53,7 +53,14 @@ func TestBuildResizePodUpdatesOnlyTargetContainer(t *testing.T) {
 		string(autoscalingv1alpha1.ResourceMetricMemory): {},
 	}
 
-	resized := buildResizePod(pod, 0, targets, resources)
+	resized := buildResizePod(pod, []containerResizePlan{
+		{
+			Index:   0,
+			Name:    "app",
+			Current: pod.Spec.Containers[0].Resources.Requests,
+			Targets: targets,
+		},
+	}, resources)
 
 	app := resized.Spec.Containers[0]
 	gotAppCPUReq := app.Resources.Requests[corev1.ResourceCPU]
@@ -92,29 +99,132 @@ func TestBuildResizePodUpdatesOnlyTargetContainer(t *testing.T) {
 	}
 }
 
-func TestPrimaryContainerIndex(t *testing.T) {
+func TestBuildResizePodUpdatesAllContainersForWildcardPlan(t *testing.T) {
+	t.Parallel()
+
+	pod := corev1.Pod{
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name: "app",
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("128Mi"),
+						},
+					},
+				},
+				{
+					Name: "sidecar",
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("50m"),
+							corev1.ResourceMemory: resource.MustParse("64Mi"),
+						},
+					},
+				},
+			},
+		},
+	}
+	resources := map[string]autoscalingv1alpha1.ResourceBoundsSpec{
+		string(autoscalingv1alpha1.ResourceMetricCPU):    {},
+		string(autoscalingv1alpha1.ResourceMetricMemory): {},
+	}
+	resized := buildResizePod(pod, []containerResizePlan{
+		{
+			Index:   0,
+			Name:    "app",
+			Current: pod.Spec.Containers[0].Resources.Requests,
+			Targets: TargetResult{
+				CPU:    quantityPtr(resource.MustParse("200m")),
+				Memory: quantityPtr(resource.MustParse("256Mi")),
+			},
+		},
+		{
+			Index:   1,
+			Name:    "sidecar",
+			Current: pod.Spec.Containers[1].Resources.Requests,
+			Targets: TargetResult{
+				CPU:    quantityPtr(resource.MustParse("75m")),
+				Memory: quantityPtr(resource.MustParse("96Mi")),
+			},
+		},
+	}, resources)
+
+	gotAppCPU := resized.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
+	if (&gotAppCPU).Cmp(resource.MustParse("200m")) != 0 {
+		t.Fatalf("app cpu request = %s, want 200m", (&gotAppCPU).String())
+	}
+	gotSidecarCPU := resized.Spec.Containers[1].Resources.Requests[corev1.ResourceCPU]
+	if (&gotSidecarCPU).Cmp(resource.MustParse("75m")) != 0 {
+		t.Fatalf("sidecar cpu request = %s, want 75m", (&gotSidecarCPU).String())
+	}
+}
+
+func TestTargetContainerIndexes(t *testing.T) {
 	t.Parallel()
 
 	t.Run("no containers", func(t *testing.T) {
 		t.Parallel()
-		if _, ok := primaryContainerIndex(corev1.Pod{}); ok {
-			t.Fatal("expected no primary container")
+		if indexes := targetContainerIndexes(corev1.Pod{}, &autoscalingv1alpha1.ResizeSpec{}); len(indexes) != 0 {
+			t.Fatalf("expected no target containers, got %v", indexes)
 		}
 	})
 
-	t.Run("returns first index", func(t *testing.T) {
+	t.Run("returns first index when container name unset", func(t *testing.T) {
 		t.Parallel()
 		pod := corev1.Pod{
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{{Name: "app"}, {Name: "sidecar"}},
 			},
 		}
-		idx, ok := primaryContainerIndex(pod)
-		if !ok {
-			t.Fatal("expected primary container")
+		indexes := targetContainerIndexes(pod, &autoscalingv1alpha1.ResizeSpec{})
+		if len(indexes) != 1 || indexes[0] != 0 {
+			t.Fatalf("target indexes = %v, want [0]", indexes)
 		}
-		if idx != 0 {
-			t.Fatalf("primary index = %d, want 0", idx)
+	})
+
+	t.Run("returns matching named container", func(t *testing.T) {
+		t.Parallel()
+		pod := corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{Name: "app"}, {Name: "sidecar"}},
+			},
+		}
+		indexes := targetContainerIndexes(pod, &autoscalingv1alpha1.ResizeSpec{
+			ContainerName: strPtr("sidecar"),
+		})
+		if len(indexes) != 1 || indexes[0] != 1 {
+			t.Fatalf("target indexes = %v, want [1]", indexes)
+		}
+	})
+
+	t.Run("wildcard selects all containers", func(t *testing.T) {
+		t.Parallel()
+		pod := corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{Name: "app"}, {Name: "sidecar"}},
+			},
+		}
+		indexes := targetContainerIndexes(pod, &autoscalingv1alpha1.ResizeSpec{
+			ContainerName: strPtr("*"),
+		})
+		if len(indexes) != 2 || indexes[0] != 0 || indexes[1] != 1 {
+			t.Fatalf("target indexes = %v, want [0 1]", indexes)
+		}
+	})
+
+	t.Run("missing named container", func(t *testing.T) {
+		t.Parallel()
+		pod := corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{Name: "app"}, {Name: "sidecar"}},
+			},
+		}
+		if indexes := targetContainerIndexes(pod, &autoscalingv1alpha1.ResizeSpec{
+			ContainerName: strPtr("metrics"),
+		}); len(indexes) != 0 {
+			t.Fatalf("expected no target container, got %v", indexes)
 		}
 	})
 }

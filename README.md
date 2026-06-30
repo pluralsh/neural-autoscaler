@@ -11,7 +11,7 @@ On each reconcile tick the controller runs a predict→resize loop:
 1. **Collect** — Fetch current CPU/memory usage from metrics-server for the workload named in `spec.metrics.metricsServer.targetRef`, and append each sample to an in-memory per-resource history buffer.
 2. **Forecast** — Once the buffer holds enough samples (16+), run the bundled ONNX forecaster to produce a future usage series over `spec.forecast.horizon` at `spec.forecast.step` intervals.
 3. **Derive targets** — When `spec.resize` is set, compute per-pod container requests from forecast peaks (max over horizon and quantiles, with headroom, divided by matching pod count) and clamp to `spec.resize.resources` min/max. Skips resize if the change is below `minChangePercent`.
-4. **Apply** — Patch pod requests in place via `pods/resize`. Only requests are predicted; limits are raised only when they would fall below the new request.
+4. **Apply** — Patch pod requests in place via `pods/resize`. Resize scope is controlled by `spec.resize.containerName` (optional): unset = primary container (`spec.containers[0]`), named value = that container only, `"*"` = all containers in each pod. Only requests are predicted; limits are raised only when they would fall below the new request.
 
 ## Example
 
@@ -45,6 +45,30 @@ spec:
 ```
 
 Point `targetRef` at a Deployment, StatefulSet, or ReplicaSet in the same namespace. Omit `resize` to run forecast-only (metrics collection and logging, no pod changes).
+
+### Container targeting
+
+`spec.resize.containerName` is optional and controls which containers in each pod are resized:
+
+- unset: resize only the primary container (`spec.containers[0]`)
+- `"app"` (or any exact name): resize only that container
+- `"*"`: resize all containers in each matched pod
+
+Example:
+
+```yaml
+spec:
+  resize:
+    containerName: "*"
+    minChangePercent: 5
+    resources:
+      cpu:
+        min: 100m
+        max: "8"
+      memory:
+        min: 128Mi
+        max: 2Gi
+```
 
 ### Prometheus metrics source
 
@@ -95,7 +119,7 @@ helm install neural-autoscaler ./charts/neural-autoscaler \
 
 ### Samples
 
-Manifests under `config/samples/` include the `api` demo workload and NeuralAutoscaler variants. `kubectl apply -k config/samples` applies the metrics-server sample (`autoscaling_v1alpha1_neuralautoscaler_metrics_server.yaml`), which warms up in ~16 reconciles at 20s (~5 min). Prometheus samples (`autoscaling_v1alpha1_neuralautoscaler_prometheus*.yaml`) need ~16 min at 1m step before forecasting.
+Manifests under `config/samples/` include the `api` demo workload and NeuralAutoscaler variants. `kubectl apply -k config/samples` applies the metrics-server sample (`autoscaling_v1alpha1_neuralautoscaler_metrics_server.yaml`), which warms up in ~16 reconciles at 20s (~5 min). Prometheus samples (`autoscaling_v1alpha1_neuralautoscaler_prometheus*.yaml`) need ~16 min at 1m step before forecasting. For all-containers resizing, use `autoscaling_v1alpha1_neuralautoscaler_metrics_server_all_containers.yaml` (`containerName: "*"`).
 
 ### Local development
 

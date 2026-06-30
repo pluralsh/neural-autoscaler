@@ -1,0 +1,34 @@
+# Metrics-server sample that resizes all containers in each target pod.
+apiVersion: autoscaling.plural.sh/v1alpha1
+kind: NeuralAutoscaler
+metadata:
+  labels:
+    app.kubernetes.io/name: neuralautoscaler
+    app.kubernetes.io/instance: neuralautoscaler-metrics-server-all-containers
+    app.kubernetes.io/part-of: neural-autoscaler
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: neural-autoscaler
+  name: neuralautoscaler-metrics-server-all-containers
+spec:
+  metrics:
+    type: MetricsServer
+    metricsServer:
+      targetRef:
+        kind: Deployment
+        name: api
+      resources:
+        - cpu
+        - memory
+  forecast:
+    horizon: 12
+    step: 1m
+  resize:
+    containerName: "*"
+    minChangePercent: 5
+    resources:
+      cpu:
+        min: 100m
+        max: "8"
+      memory:
+        min: 128Mi
+        max: 2Gi

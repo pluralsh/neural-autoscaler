@@ -3,4 +3,5 @@ resources:
 - workload-deployment.yaml
 - autoscaling_v1alpha1_neuralautoscaler_metrics_server.yaml
 # Prometheus variants (require a Prometheus-compatible API): autoscaling_v1alpha1_neuralautoscaler_prometheus.yaml, autoscaling_v1alpha1_neuralautoscaler_prometheus_local.yaml
+# Metrics-server all-containers variant: autoscaling_v1alpha1_neuralautoscaler_metrics_server_all_containers.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

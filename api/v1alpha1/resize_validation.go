@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -11,6 +12,10 @@ import (
 func ValidateResize(spec *ResizeSpec) error {
 	if spec == nil {
 		return nil
+	}
+
+	if spec.ContainerName != nil && strings.TrimSpace(*spec.ContainerName) == "" {
+		return fmt.Errorf("resize.containerName must not be empty")
 	}
 
 	if err := validateMinChangePercent("resize.minChangePercent", spec.MinChangePercent); err != nil {
