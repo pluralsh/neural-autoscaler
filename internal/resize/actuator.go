@@ -277,7 +277,7 @@ func formatChange(current corev1.ResourceList, name corev1.ResourceName, desired
 	if desired != nil {
 		newVal = desired.String()
 	}
-	return old + " -> " + newVal
+	return old + " to " + newVal
 }
 
 func containerNames(plans []containerResizePlan) []string {
